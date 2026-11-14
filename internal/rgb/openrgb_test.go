@@ -25,11 +25,11 @@ func buildControllerBlock(name string, numLEDs int, zones []struct {
 	put(0) // data_size (patched at the end)
 	put(0) // device type
 	str(name)
-	str("") // vendor
-	str("") // description
-	str("") // version
-	str("") // serial
-	str("") // location
+	str("")  // vendor
+	str("")  // description
+	str("")  // version
+	str("")  // serial
+	str("")  // location
 	put16(0) // num_modes
 	put(0)   // active_mode
 	put16(uint16(len(zones)))

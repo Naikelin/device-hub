@@ -1,9 +1,11 @@
-// Package razer lee la batería de dispositivos Razer vía sysfs de openrazer y
-// controla su RGB a través del servidor SDK de OpenRGB.
+// Package razer lee la batería de dispositivos Razer vía sysfs de openrazer.
+//
+// El control de LEDs no vive acá: el backend `openrazer` de internal/led habla
+// D-Bus, y el backend `openrgb` usa el SDK. Este paquete solo aporta la
+// identidad del dispositivo y su serial de openrazer.
 package razer
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +13,6 @@ import (
 	"strings"
 
 	"device-hub/internal/device"
-	"device-hub/internal/rgb"
 )
 
 // Razer representa un mouse Razer (Naga Pro) con soporte openrazer.
@@ -32,6 +33,24 @@ func findChargeDir() (string, error) {
 	return "", fmt.Errorf("dispositivo razermouse no encontrado")
 }
 
+// Serial devuelve el serial USB que openrazer usa en su ruta D-Bus.
+func Serial() (string, error) {
+	dir, err := findChargeDir()
+	if err != nil {
+		return "", err
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "device_serial"))
+	if err != nil {
+		return "", err
+	}
+	serial := strings.TrimSpace(string(raw))
+	if serial == "" {
+		return "", fmt.Errorf("razer: serial vacío")
+	}
+	return serial, nil
+}
+
+// Battery lee el nivel y el estado de carga desde sysfs.
 func (Razer) Battery() (device.BatteryReading, error) {
 	dir, err := findChargeDir()
 	if err != nil {
@@ -60,90 +79,4 @@ func (Razer) Battery() (device.BatteryReading, error) {
 	}
 
 	return device.BatteryReading{Percent: percent, Status: status}, nil
-}
-
-// ---- RGB (OpenRGB SDK) ---------------------------------------------------
-
-const (
-	openrgbAddrEnv = "DEVICE_HUB_OPENRGB"
-	openrgbAddr    = "127.0.0.1:6742"
-	openrgbMatch   = "naga pro"
-)
-
-func openrgbAddress() string {
-	if v := os.Getenv(openrgbAddrEnv); v != "" {
-		return v
-	}
-	return openrgbAddr
-}
-
-// openrgbController abre el servidor y localiza el controlador del Naga Pro.
-func openrgbController() (*rgb.Client, rgb.Controller, error) {
-	client, err := rgb.Dial(openrgbAddress())
-	if err != nil {
-		return nil, rgb.Controller{}, err
-	}
-	controllers, err := client.Controllers()
-	if err != nil {
-		client.Close()
-		return nil, rgb.Controller{}, err
-	}
-	for _, ctrl := range controllers {
-		if strings.Contains(strings.ToLower(ctrl.Name), openrgbMatch) {
-			return client, ctrl, nil
-		}
-	}
-	client.Close()
-	return nil, rgb.Controller{}, errors.New("razer: OpenRGB no reporta el Naga Pro")
-}
-
-func (Razer) Zones() []device.Zone {
-	client, ctrl, err := openrgbController()
-	if err != nil {
-		return nil
-	}
-	defer client.Close()
-	zones := make([]device.Zone, len(ctrl.Zones))
-	for i, z := range ctrl.Zones {
-		zones[i] = device.Zone{ID: i, Name: z.Name}
-	}
-	return zones
-}
-
-func (Razer) SetZone(zoneID int, color [3]uint8) error {
-	client, ctrl, err := openrgbController()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	if zoneID < 0 || zoneID >= len(ctrl.Zones) {
-		return fmt.Errorf("razer: zona %d fuera de rango", zoneID)
-	}
-	if err := client.SetCustomMode(ctrl.Index); err != nil {
-		return err
-	}
-	colors := make([][3]uint8, ctrl.Zones[zoneID].NumLEDs)
-	for i := range colors {
-		colors[i] = color
-	}
-	return client.UpdateZoneLEDs(ctrl.Index, uint32(zoneID), colors)
-}
-
-func (Razer) SetAll(color [3]uint8) error {
-	client, ctrl, err := openrgbController()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	if ctrl.NumLEDs <= 0 {
-		return errors.New("razer: controlador sin LEDs")
-	}
-	if err := client.SetCustomMode(ctrl.Index); err != nil {
-		return err
-	}
-	colors := make([][3]uint8, ctrl.NumLEDs)
-	for i := range colors {
-		colors[i] = color
-	}
-	return client.UpdateLEDs(ctrl.Index, colors)
 }

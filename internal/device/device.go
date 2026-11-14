@@ -1,13 +1,19 @@
 // Package device define el modelo unificado de dispositivos y el registry.
 package device
 
-// Kind clasifica un periférico.
+// Kind clasifica un periférico o componente con LEDs.
 type Kind int
 
 const (
 	KindMouse Kind = iota
 	KindKeyboard
 	KindHeadset
+	KindMotherboard
+	KindMemory
+	KindGPU
+	KindSpeaker
+	KindMicrophone
+	KindLighting
 )
 
 func (k Kind) String() string {
@@ -18,8 +24,42 @@ func (k Kind) String() string {
 		return "keyboard"
 	case KindHeadset:
 		return "headset"
+	case KindMotherboard:
+		return "motherboard"
+	case KindMemory:
+		return "memory"
+	case KindGPU:
+		return "gpu"
+	case KindSpeaker:
+		return "speaker"
+	case KindMicrophone:
+		return "microphone"
 	default:
-		return "unknown"
+		return "lighting"
+	}
+}
+
+// Image devuelve el asset del panel que representa este tipo.
+func (k Kind) Image() string {
+	switch k {
+	case KindMouse:
+		return "mouse.svg"
+	case KindKeyboard:
+		return "keyboard.svg"
+	case KindHeadset:
+		return "headset.svg"
+	case KindMotherboard:
+		return "motherboard.svg"
+	case KindMemory:
+		return "memory.svg"
+	case KindGPU:
+		return "gpu.svg"
+	case KindSpeaker:
+		return "speaker.svg"
+	case KindMicrophone:
+		return "microphone.svg"
+	default:
+		return "unknown.svg"
 	}
 }
 
@@ -29,25 +69,16 @@ type BatteryReading struct {
 	Status  string // "discharging" | "charging" | "fully charged" | "unknown"
 }
 
-// Zone es una región LED controlable por separado.
-type Zone struct {
-	ID   int
-	Name string
-}
-
-// Device es la interfaz mínima que todo periférico implementa.
+// Device es la identidad mínima de un dispositivo con LEDs.
 type Device interface {
 	ID() string
 	Name() string
 	Kind() Kind
 	Image() string // asset de la foto
-	Battery() (BatteryReading, error)
 }
 
-// RGBDevice extiende Device con control de color por zona.
-type RGBDevice interface {
+// BatteryDevice es un Device que además reporta batería.
+type BatteryDevice interface {
 	Device
-	Zones() []Zone
-	SetZone(zoneID int, color [3]uint8) error
-	SetAll(color [3]uint8) error
+	Battery() (BatteryReading, error)
 }

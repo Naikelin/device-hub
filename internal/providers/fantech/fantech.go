@@ -47,10 +47,13 @@ var customModePayload = []byte{
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 }
 
+// DeviceID es el identificador del teclado en el hub.
+const DeviceID = "fantech.atom-he68-pro"
+
 // Fantech representa el teclado Atom HE68 PRO.
 type Fantech struct{}
 
-func (Fantech) ID() string        { return "fantech.atom-he68-pro" }
+func (Fantech) ID() string        { return DeviceID }
 func (Fantech) Name() string      { return "Fantech Atom HE68 PRO" }
 func (Fantech) Kind() device.Kind { return device.KindKeyboard }
 func (Fantech) Image() string     { return "keyboard.svg" }
@@ -95,18 +98,9 @@ func (Fantech) Battery() (device.BatteryReading, error) {
 
 // ---- RGB (receptor 2.4 GHz) ----------------------------------------------
 
-func (Fantech) Zones() []device.Zone {
-	return []device.Zone{{ID: 0, Name: "Keyboard"}}
-}
-
-func (f Fantech) SetZone(zoneID int, color [3]uint8) error {
-	if zoneID != 0 {
-		return errors.New("fantech: solo hay una zona RGB")
-	}
-	return f.SetAll(color)
-}
-
-func (Fantech) SetAll(color [3]uint8) error {
+// SetAll pinta los 128 LEDs del teclado con un solo color. Activa el modo
+// Custom y envía la tabla en 22 reports de seis LEDs.
+func SetAll(color [3]uint8) error {
 	mu.Lock()
 	defer mu.Unlock()
 
