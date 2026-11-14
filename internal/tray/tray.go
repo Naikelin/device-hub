@@ -31,12 +31,8 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
 	quitItem := systray.AddMenuItem("Salir", "Cerrar")
 
-	// Click izquierdo -> abrir/cerrar el panel (incrementa toggle + escribe estado).
+	// Click izquierdo -> abrir/cerrar el panel (IPC al panel + señal D-Bus).
 	systray.SetOnClick(func(systray.IMenu) {
-		st.Toggle()
-		if statePath != "" {
-			_ = st.WriteState(statePath)
-		}
 		if onToggle != nil {
 			onToggle()
 		}

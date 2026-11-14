@@ -17,7 +17,7 @@ type Razer struct{}
 func (Razer) ID() string        { return "razer.naga-pro" }
 func (Razer) Name() string      { return "Razer Naga Pro" }
 func (Razer) Kind() device.Kind { return device.KindMouse }
-func (Razer) Image() string     { return "mouse.png" }
+func (Razer) Image() string     { return "mouse.svg" }
 
 func findChargeDir() (string, error) {
 	entries, _ := filepath.Glob("/sys/bus/hid/drivers/razermouse/*")

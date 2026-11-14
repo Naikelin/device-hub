@@ -39,7 +39,7 @@ type G435 struct{}
 func (G435) ID() string        { return "logitech.g435" }
 func (G435) Name() string      { return "Logitech G435" }
 func (G435) Kind() device.Kind { return device.KindHeadset }
-func (G435) Image() string     { return "headset.png" }
+func (G435) Image() string     { return "headset.svg" }
 
 func crc16Xmodem(data []byte) uint16 {
 	var crc uint16

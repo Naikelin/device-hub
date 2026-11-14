@@ -28,7 +28,7 @@ type Fantech struct{}
 func (Fantech) ID() string        { return "fantech.atom-he68-pro" }
 func (Fantech) Name() string      { return "Fantech Atom HE68 PRO" }
 func (Fantech) Kind() device.Kind { return device.KindKeyboard }
-func (Fantech) Image() string     { return "keyboard.png" }
+func (Fantech) Image() string     { return "keyboard.svg" }
 
 func (Fantech) Battery() (device.BatteryReading, error) {
 	path, ok := hidraw.FindDevice(vendorHex, productHex, []byte(usagePageTag))

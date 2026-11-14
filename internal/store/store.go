@@ -1,6 +1,5 @@
 // Package store cachea las últimas lecturas de batería y publica un archivo de
-// estado JSON que el panel QML observa (Quickshell.Io.FileView). También lleva
-// un contador "toggle" que se incrementa al hacer click en el tray.
+// estado JSON que el panel QML observa con Quickshell.Io.FileView.
 package store
 
 import (
@@ -8,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 
 	"device-hub/internal/device"
 )
@@ -19,12 +17,11 @@ type Reading struct {
 	Battery device.BatteryReading
 }
 
-// Store mantiene las lecturas y el contador de toggle.
+// Store mantiene las lecturas, actualizadas por el poller del daemon.
 type Store struct {
 	reg      *device.Registry
 	mu       sync.RWMutex
 	readings map[string]Reading
-	toggle   atomic.Int64
 }
 
 func New(reg *device.Registry) *Store {
@@ -60,10 +57,11 @@ func (s *Store) Readings() []Reading {
 	return out
 }
 
-// Toggle incrementa el contador (click en el tray).
-func (s *Store) Toggle() { s.toggle.Add(1) }
-
-// WriteState escribe el estado (dispositivos + toggle) como JSON, atómicamente.
+// WriteState escribe el estado como JSON.
+//
+// Se escribe en sitio (sin rename) a propósito: el panel observa el archivo con
+// inotify y un rename reemplaza el inodo, cortando el watch. El panel tolera una
+// lectura a medias manteniendo el último estado válido.
 func (s *Store) WriteState(path string) error {
 	type devJSON struct {
 		ID      string `json:"id"`
@@ -71,6 +69,7 @@ func (s *Store) WriteState(path string) error {
 		Kind    string `json:"kind"`
 		Image   string `json:"image"`
 		Percent int    `json:"percent"`
+		Status  string `json:"status"`
 	}
 	var devs []devJSON
 	for _, r := range s.Readings() {
@@ -80,12 +79,12 @@ func (s *Store) WriteState(path string) error {
 			Kind:    r.Device.Kind().String(),
 			Image:   r.Device.Image(),
 			Percent: r.Battery.Percent,
+			Status:  r.Battery.Status,
 		})
 	}
 	state := struct {
 		Devices []devJSON `json:"devices"`
-		Toggle  int64     `json:"toggle"`
-	}{devs, s.toggle.Load()}
+	}{devs}
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -95,9 +94,5 @@ func (s *Store) WriteState(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return os.WriteFile(path, data, 0o644)
 }
