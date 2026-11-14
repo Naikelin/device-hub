@@ -310,7 +310,31 @@ FloatingWindow {
                         elide: Text.ElideRight
                     }
 
+                    Rectangle {
+                        visible: ledCfg.enabled && ledCfg.controller === "openrgb"
+                        width: appLabel.implicitWidth + 14
+                        height: 18
+                        radius: 9
+                        color: root.cardColor
+                        border.width: 1
+                        border.color: root.borderColor
+
+                        Text {
+                            id: appLabel
+                            anchors.centerIn: parent
+                            text: "OpenRGB"
+                            color: root.textColor
+                            font.pixelSize: 9
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.send({ action: "openrgb" })
+                        }
+                    }
+
                     Text {
+                        visible: !ledCfg.enabled || ledCfg.controller !== "openrgb"
                         text: ledCfg.enabled ? (ledCfg.controller || "") : "apagado"
                         color: root.dimColor
                         font.pixelSize: 10

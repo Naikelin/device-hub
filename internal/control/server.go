@@ -24,7 +24,7 @@ type manager interface {
 }
 
 type command struct {
-	Action     string `json:"action"` // set | sync | on | off | controller | window
+	Action     string `json:"action"` // set | sync | on | off | controller | window | openrgb
 	Device     string `json:"device"`
 	Color      string `json:"color"`
 	Controller string `json:"controller"`
@@ -38,14 +38,16 @@ type reply struct {
 // Server accepts newline-delimited JSON commands over a Unix socket.
 // The panel writes one command per line and reads one reply per line.
 type Server struct {
-	m        manager
-	onWindow func()
-	ln       net.Listener
-	path     string
+	m         manager
+	onWindow  func()
+	onOpenRGB func()
+	ln        net.Listener
+	path      string
 }
 
-// NewServer listens on path. onWindow opens the RGB window and may be nil.
-func NewServer(path string, m manager, onWindow func()) (*Server, error) {
+// NewServer listens on path. onWindow opens the RGB window and onOpenRGB opens
+// the OpenRGB GUI; both may be nil.
+func NewServer(path string, m manager, onWindow, onOpenRGB func()) (*Server, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -55,7 +57,7 @@ func NewServer(path string, m manager, onWindow func()) (*Server, error) {
 		return nil, err
 	}
 	_ = os.Chmod(path, 0o600)
-	return &Server{m: m, onWindow: onWindow, ln: ln, path: path}, nil
+	return &Server{m: m, onWindow: onWindow, onOpenRGB: onOpenRGB, ln: ln, path: path}, nil
 }
 
 // Run accepts connections until Close is called.
@@ -134,6 +136,10 @@ func (s *Server) execute(line string) reply {
 	case "window":
 		if s.onWindow != nil {
 			go s.onWindow()
+		}
+	case "openrgb":
+		if s.onOpenRGB != nil {
+			go s.onOpenRGB()
 		}
 	default:
 		return reply{Error: "acción desconocida: " + cmd.Action}

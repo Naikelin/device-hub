@@ -96,6 +96,15 @@ una ventana flotante con chips de destino (`Todos` o un dispositivo), paleta de
 8 colores, entrada hex y el estado de cada dispositivo. Se abre desde el botón
 "Control RGB…" del hub o desde el menú del tray.
 
+En la lista de la ventana, los dispositivos cuyo controlador es `openrgb`
+tienen un botón **OpenRGB** que abre la GUI oficial (`openrgb --gui`). Ojo: al
+arrancar, la GUI resetea los dispositivos que estaban en modo Direct; es el
+quirk que documenta `openrgb-nk`, así que después hay que volver a elegir el
+color.
+
+`~/.local/bin/openrgb-nk` no abre la GUI: aplica la iluminación "nk" por CLI y
+lo usa `openrgb.service` al login. Para abrir la interfaz es `openrgb --gui`.
+
 API de control (socket Unix, JSON por línea; `#RRGGBB`):
 
 ```sh

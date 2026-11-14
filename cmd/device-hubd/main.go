@@ -139,6 +139,18 @@ var (
 	lastSpawn time.Time
 )
 
+// launch arranca un programa GUI sin quedarse esperándolo.
+func launch(bin string, args ...string) {
+	go func() {
+		cmd := exec.Command(bin, args...)
+		if err := cmd.Start(); err != nil {
+			log.Printf("%s: %v", bin, err)
+			return
+		}
+		_ = cmd.Wait()
+	}()
+}
+
 // openRGBWindow muestra la ventana RGB si ya existe y, si no, la lanza.
 func openRGBWindow(path, target string) {
 	if path == "" {
@@ -203,9 +215,10 @@ func main() {
 	}
 
 	openRGB := func() { openRGBWindow(*rgbWindow, *rgbTarget) }
+	openOpenRGB := func() { launch("openrgb", "--gui") }
 
 	// Servidor de control para el panel (Unix socket, JSON por línea).
-	control, err := control.NewServer(controlPath(), ledManager, openRGB)
+	control, err := control.NewServer(controlPath(), ledManager, openRGB, openOpenRGB)
 	if err != nil {
 		log.Printf("control server: %v", err)
 	} else {

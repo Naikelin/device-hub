@@ -2,6 +2,7 @@ package control
 
 import (
 	"testing"
+	"time"
 
 	"device-hub/internal/led"
 )
@@ -81,6 +82,20 @@ func TestExecuteRoutesEveryAction(t *testing.T) {
 			t.Fatalf("%s -> %+v", tc.line, got)
 		}
 		tc.check(t)
+	}
+}
+
+func TestExecuteOpenRGB(t *testing.T) {
+	called := make(chan struct{}, 1)
+	s := &Server{m: newFakeManager(), onOpenRGB: func() { called <- struct{}{} }}
+
+	if got := s.execute(`{"action":"openrgb"}`); !got.OK {
+		t.Fatalf("reply = %+v", got)
+	}
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("openrgb handler was not called")
 	}
 }
 
