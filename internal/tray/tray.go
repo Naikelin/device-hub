@@ -10,15 +10,16 @@ import (
 )
 
 // Run arranca el systray (SNI) y se queda hasta Quit.
-// onToggle se invoca al hacer click izquierdo en el icono.
-func Run(st *store.Store, interval time.Duration, onToggle func()) {
+// statePath es el archivo JSON que observa el panel QML.
+// onToggle se invoca además al hacer click izquierdo (para la señal D-Bus).
+func Run(st *store.Store, interval time.Duration, statePath string, onToggle func()) {
 	systray.Run(
-		func() { onReady(st, interval, onToggle) },
+		func() { onReady(st, interval, statePath, onToggle) },
 		func() {},
 	)
 }
 
-func onReady(st *store.Store, interval time.Duration, onToggle func()) {
+func onReady(st *store.Store, interval time.Duration, statePath string, onToggle func()) {
 	deviceItems := map[string]*systray.MenuItem{}
 
 	for _, d := range st.Devices() {
@@ -30,13 +31,27 @@ func onReady(st *store.Store, interval time.Duration, onToggle func()) {
 	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
 	quitItem := systray.AddMenuItem("Salir", "Cerrar")
 
-	// Click izquierdo en el icono -> abrir/cerrar el panel (señal Toggled).
-	if onToggle != nil {
-		systray.SetOnClick(func(systray.IMenu) { onToggle() })
+	// Click izquierdo -> abrir/cerrar el panel (incrementa toggle + escribe estado).
+	systray.SetOnClick(func(systray.IMenu) {
+		st.Toggle()
+		if statePath != "" {
+			_ = st.WriteState(statePath)
+		}
+		if onToggle != nil {
+			onToggle()
+		}
+	})
+
+	writeState := func() {
+		if statePath != "" {
+			_ = st.WriteState(statePath)
+		}
 	}
 
 	refresh := func() {
 		st.Refresh()
+		writeState()
+
 		byID := map[string]store.Reading{}
 		for _, r := range st.Readings() {
 			byID[r.Device.ID()] = r
