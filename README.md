@@ -21,6 +21,12 @@ device-hubd (Go)                    Quickshell (QML)
 - **D-Bus** (`org.devicehub`): `GetDevices()` y la señal `Toggled`, para otras
   herramientas. Quickshell 0.3.x no tiene cliente D-Bus genérico; por eso el
   panel no lo consume.
+- **Panel standalone**: corre como su propia instancia de Quickshell
+  (`qs -p panel/panel.qml`), no como plugin de la barra de Ryoku. Así una
+  actualización de Ryoku no puede romperlo.
+- **Cierre**: la superficie es una capa Overlay fullscreen transparente; el área
+  libre es el catcher de click-afuera, y la superficie toma foco de teclado para
+  cerrar con Escape. Mismo enfoque que los menús de Ryoku.
 
 ## Dispositivos
 
@@ -81,6 +87,6 @@ go vet ./...
 ## Roadmap
 
 - [x] Instalar daemon + panel como servicios de usuario.
-- [ ] Panel como plugin de la barra de Ryoku (`qs.Ui`/`qs.Commons`).
+- [x] Cerrar con click fuera y con Escape.
 - [ ] RGB vía OpenRGB (SDK TCP 6742) + sincronización.
 - [ ] OpenRazer completo (DPI, macros) y más dispositivos.

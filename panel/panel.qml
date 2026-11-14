@@ -10,22 +10,23 @@ import Quickshell.Wayland
 // feels instant:
 //
 //   qs ipc -p <this file> call devicehub toggle
+//
+// The window is a fullscreen transparent Overlay layer instead of a small
+// anchored surface: the empty area is the outside-click catcher, so clicking
+// anywhere off the card dismisses the panel, and the surface can take keyboard
+// focus for Escape. Same approach as Ryoku's own context menus.
 PanelWindow {
     id: root
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "device-hub-panel"
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    WlrLayershell.keyboardFocus: root.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
 
-    anchors { top: true; right: true }
-    margins.top: 48
-    margins.right: 12
+    anchors { top: true; bottom: true; left: true; right: true }
 
     visible: false
-    implicitWidth: 360
-    implicitHeight: 72 + Math.max(1, devices.length) * 84 + 16
 
     // ---- theme (standalone palette; swaps to qs.Commons when embedded) ----
     readonly property color bgColor: "#1a1b26"
@@ -66,18 +67,66 @@ PanelWindow {
         }
     }
 
-    onVisibleChanged: if (visible) reload()
+    onVisibleChanged: {
+        if (!visible) return
+        reload()
+        Qt.callLater(() => keys.forceActiveFocus())
+    }
 
-    // ---- UI --------------------------------------------------------------
-    Rectangle {
+    // ---- dismiss ---------------------------------------------------------
+    // Fullscreen catcher below the card: any press outside closes the panel.
+    MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        z: 0
+        onPressed: root.visible = false
+    }
+
+    // Keyboard focus holder: Escape closes, like any other popup.
+    Item {
+        id: keys
+        anchors.fill: parent
+        focus: true
+        z: 1
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Escape) {
+                root.visible = false
+                event.accepted = true
+            }
+        }
+    }
+
+    // ---- card ------------------------------------------------------------
+    Rectangle {
+        id: card
+
+        width: 360
+        height: content.implicitHeight + 28
+
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 48
+        anchors.rightMargin: 12
+
+        z: 2
+
         radius: 16
         color: root.bgColor
         border.width: 1
         border.color: root.borderColor
 
-        Column {
+        // Swallow presses on the card so they never reach the outside catcher.
+        MouseArea {
             anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+        }
+
+        Column {
+            id: content
+
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
             anchors.margins: 14
             spacing: 12
 
