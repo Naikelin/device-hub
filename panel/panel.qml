@@ -3,18 +3,18 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-// Device Hub panel: popup with one card per peripheral.
+// Device Hub panel: popup with one card per peripheral plus RGB control.
 //
-// State comes from the daemon through a JSON file (Quickshell 0.3.x has no
-// generic D-Bus client), while show/hide is driven by IPC so the tray click
-// feels instant:
+// Battery and RGB state come from the daemon through a JSON file (Quickshell
+// 0.3.x has no generic D-Bus client). Show/hide is driven by IPC so the tray
+// click feels instant:
 //
 //   qs ipc -p <this file> call devicehub toggle
 //
-// The window is a fullscreen transparent Overlay layer instead of a small
-// anchored surface: the empty area is the outside-click catcher, so clicking
-// anywhere off the card dismisses the panel, and the surface can take keyboard
-// focus for Escape. Same approach as Ryoku's own context menus.
+// RGB commands go back to the daemon over a Unix socket, one JSON line per
+// command. The window is a fullscreen transparent Overlay layer so the empty
+// area is the outside-click catcher and the surface can take keyboard focus
+// for Escape (same approach as Ryoku's own context menus).
 PanelWindow {
     id: root
 
@@ -28,7 +28,7 @@ PanelWindow {
 
     visible: false
 
-    // ---- theme (standalone palette; swaps to qs.Commons when embedded) ----
+    // ---- theme (standalone palette) --------------------------------------
     readonly property color bgColor: "#1a1b26"
     readonly property color cardColor: "#232433"
     readonly property color borderColor: "#2f334d"
@@ -38,6 +38,16 @@ PanelWindow {
 
     property var state: ({ devices: [] })
     readonly property var devices: state.devices || []
+    readonly property var rgbMap: state.rgb || ({})
+    readonly property var rgbDevices: devices.filter(d => d.rgb)
+    readonly property var targetModel: [{ id: "all", name: "Todos" }].concat(
+        rgbDevices.map(d => ({ id: d.id, name: d.name })))
+    readonly property var palette: [
+        "#ff4d4d", "#ff9f43", "#ffe066", "#51cf66",
+        "#22d3ee", "#4dabf7", "#a78bfa", "#f8f9fa"
+    ]
+
+    property string rgbTarget: "all"
 
     // ---- IPC -------------------------------------------------------------
     IpcHandler {
@@ -48,12 +58,16 @@ PanelWindow {
     }
 
     // ---- state file ------------------------------------------------------
+    // The daemon rewrites state.json in place, so atomicWrites stays off and
+    // fileChanged only schedules a re-read; the parse happens in onLoaded,
+    // once the new contents are actually available.
     FileView {
         id: stateFile
         path: (Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000") + "/device-hub/state.json"
         watchChanges: true
+        atomicWrites: false
         printErrors: false
-        onFileChanged: root.reload()
+        onFileChanged: stateFile.reload()
         onLoaded: root.reload()
     }
 
@@ -65,6 +79,31 @@ PanelWindow {
         } catch (e) {
             // keep the last good state while the file is mid-write
         }
+    }
+
+    // ---- control socket (panel -> daemon) --------------------------------
+    Socket {
+        id: control
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000") + "/device-hub/control.sock"
+        connected: false
+    }
+
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: if (!control.connected) control.connected = true
+    }
+
+    Component.onCompleted: control.connected = true
+
+    function applyColor(hex) {
+        const action = root.rgbTarget === "all" ? "sync" : "set"
+        const cmd = { action: action, color: hex }
+        if (action === "set") cmd.device = root.rgbTarget
+        if (!control.connected) control.connected = true
+        control.write(JSON.stringify(cmd) + "\n")
+        control.flush()
     }
 
     onVisibleChanged: {
@@ -229,6 +268,21 @@ PanelWindow {
                             font.bold: true
                         }
 
+                        // Current RGB color of an RGB-capable device.
+                        Rectangle {
+                            visible: modelData.rgb
+                            width: 10
+                            height: 10
+                            radius: 5
+                            color: root.rgbMap[modelData.id] || "#3b3f5c"
+                            border.width: 1
+                            border.color: "#00000055"
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 20
+                        }
+
                         // Battery bar
                         Rectangle {
                             anchors.left: art.right
@@ -246,6 +300,103 @@ PanelWindow {
                                 height: parent.height
                                 radius: 2
                                 color: parent.parent.levelColor
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: root.borderColor
+            }
+
+            // RGB section
+            Column {
+                width: parent.width
+                spacing: 8
+
+                Item {
+                    width: parent.width
+                    height: 20
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "RGB"
+                        color: root.textColor
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.rgbTarget === "all" ? "sincronizar todos" : "solo un dispositivo"
+                        color: root.dimColor
+                        font.pixelSize: 10
+                    }
+                }
+
+                // Target chips: "Todos" plus each RGB device.
+                Flow {
+                    width: parent.width
+                    spacing: 6
+
+                    Repeater {
+                        model: root.targetModel
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool active: root.rgbTarget === modelData.id
+
+                            width: label.implicitWidth + 18
+                            height: 24
+                            radius: 12
+                            color: active ? root.accentColor : root.cardColor
+                            border.width: 1
+                            border.color: active ? root.accentColor : root.borderColor
+
+                            Text {
+                                id: label
+                                anchors.centerIn: parent
+                                text: modelData.name
+                                color: active ? "#1a1b26" : root.textColor
+                                font.pixelSize: 10
+                                font.bold: active
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.rgbTarget = modelData.id
+                            }
+                        }
+                    }
+                }
+
+                // Palette: click a swatch to apply it to the selected target.
+                Row {
+                    width: parent.width
+                    spacing: 6
+
+                    Repeater {
+                        model: root.palette
+
+                        delegate: Rectangle {
+                            required property string modelData
+
+                            width: (parent.width - 7 * 6) / 8
+                            height: 28
+                            radius: 8
+                            color: modelData
+                            border.width: 1
+                            border.color: "#00000055"
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.applyColor(modelData)
                             }
                         }
                     }
