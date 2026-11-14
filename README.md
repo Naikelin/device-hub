@@ -60,6 +60,17 @@ Flags del daemon:
 - `-panel` — ruta a `panel.qml`; vacío desactiva el panel.
 - `-ipc-target` — target IPC del panel (default `devicehub`).
 
+## Servicios de usuario
+
+```sh
+systemctl --user status device-hub.service device-hub-panel.service
+systemctl --user restart device-hub.service
+journalctl --user -u device-hub-panel.service -f
+```
+
+Los units viven en `~/.config/systemd/user/` (`device-hub.service` y
+`device-hub-panel.service`), habilitados en `default.target` como el tray viejo.
+
 ## Tests
 
 ```sh
@@ -69,7 +80,7 @@ go vet ./...
 
 ## Roadmap
 
-- [ ] Instalar daemon + panel como servicios de usuario.
+- [x] Instalar daemon + panel como servicios de usuario.
 - [ ] Panel como plugin de la barra de Ryoku (`qs.Ui`/`qs.Commons`).
 - [ ] RGB vía OpenRGB (SDK TCP 6742) + sincronización.
 - [ ] OpenRazer completo (DPI, macros) y más dispositivos.
