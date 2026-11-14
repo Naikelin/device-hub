@@ -2,26 +2,26 @@ package tray
 
 import (
 	"fmt"
-	"log"
 	"time"
 
-	"device-hub/internal/device"
+	"device-hub/internal/store"
 
 	"github.com/energye/systray"
 )
 
 // Run arranca el systray (SNI) y se queda hasta Quit.
-func Run(reg *device.Registry, interval time.Duration) {
+// onToggle se invoca al hacer click izquierdo en el icono.
+func Run(st *store.Store, interval time.Duration, onToggle func()) {
 	systray.Run(
-		func() { onReady(reg, interval) },
+		func() { onReady(st, interval, onToggle) },
 		func() {},
 	)
 }
 
-func onReady(reg *device.Registry, interval time.Duration) {
+func onReady(st *store.Store, interval time.Duration, onToggle func()) {
 	deviceItems := map[string]*systray.MenuItem{}
 
-	for _, d := range reg.Devices() {
+	for _, d := range st.Devices() {
 		it := systray.AddMenuItem(d.Name(), "")
 		it.Disable()
 		deviceItems[d.ID()] = it
@@ -30,34 +30,34 @@ func onReady(reg *device.Registry, interval time.Duration) {
 	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
 	quitItem := systray.AddMenuItem("Salir", "Cerrar")
 
+	// Click izquierdo en el icono -> abrir/cerrar el panel (señal Toggled).
+	if onToggle != nil {
+		systray.SetOnClick(func(systray.IMenu) { onToggle() })
+	}
+
 	refresh := func() {
-		readings := map[string]device.BatteryReading{}
-		for _, d := range reg.Devices() {
-			b, err := d.Battery()
-			if err != nil {
-				log.Printf("%s: %v", d.Name(), err)
-				continue
-			}
-			readings[d.ID()] = b
+		st.Refresh()
+		byID := map[string]store.Reading{}
+		for _, r := range st.Readings() {
+			byID[r.Device.ID()] = r
 		}
 
-		// icono = nivel mínimo; tooltip = resumen
 		min := -1
 		var tooltip string
-		for _, d := range reg.Devices() {
-			b, ok := readings[d.ID()]
+		for _, d := range st.Devices() {
+			r, ok := byID[d.ID()]
 			if !ok {
 				continue
 			}
-			if min < 0 || b.Percent < min {
-				min = b.Percent
+			if min < 0 || r.Battery.Percent < min {
+				min = r.Battery.Percent
 			}
 			if tooltip != "" {
 				tooltip += " · "
 			}
-			tooltip += fmt.Sprintf("%s %d%%", d.Name(), b.Percent)
+			tooltip += fmt.Sprintf("%s %d%%", d.Name(), r.Battery.Percent)
 			if it, ok := deviceItems[d.ID()]; ok {
-				it.SetTitle(fmt.Sprintf("%s — %d%%", d.Name(), b.Percent))
+				it.SetTitle(fmt.Sprintf("%s — %d%%", d.Name(), r.Battery.Percent))
 			}
 		}
 		if tooltip == "" {
