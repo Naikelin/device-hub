@@ -26,7 +26,9 @@ device-hubd (Go)                        Quickshell (QML)
   reescribe en sitio: `atomicWrites: false` y el parseo ocurre en `onLoaded`,
   después de `reload()`. Trae los dispositivos (batería, controladores y flag
   LED), los colores conocidos y los `profiles` de OpenRGB con su
-  `activeProfile`.
+  `activeProfile`. Cada dispositivo trae `connected`: si uno con batería no
+  responde (apagado o fuera de alcance) la card lo marca como **desconectado**,
+  lo atenúa y bloquea los controles de LED.
 - **Comandos**: el panel y la ventana RGB mandan JSON por línea a
   `$XDG_RUNTIME_DIR/device-hub/control.sock` con `Quickshell.Io.Socket`.
 - **Toggle**: el click del SNI ejecuta `qs ipc -p <panel.qml> call devicehub

@@ -13,11 +13,13 @@ import (
 	"device-hub/internal/device"
 )
 
-// Reading es la última lectura exitosa de un dispositivo. Battery es nil para
-// los dispositivos sin batería (motherboard, RAM, GPU, altavoz, micrófono).
+// Reading es la última lectura de un dispositivo. Battery es nil para los
+// dispositivos sin batería (motherboard, RAM, GPU, altavoz, micrófono) y para
+// los que tienen batería pero no respondieron (apagados/desconectados).
 type Reading struct {
-	Device  device.Device
-	Battery *device.BatteryReading
+	Device    device.Device
+	Battery   *device.BatteryReading
+	Connected bool
 }
 
 // LEDState es la configuración de LEDs de un dispositivo, replicada desde el
@@ -55,6 +57,9 @@ func New(reg *device.Registry) *Store {
 func (s *Store) Devices() []device.Device { return s.reg.Devices() }
 
 // Refresh lee la batería de todos los dispositivos y actualiza el cache.
+//
+// Un dispositivo con batería que no responde (apagado o fuera de alcance) queda
+// como desconectado; los dispositivos sin batería siempre están conectados.
 func (s *Store) Refresh() {
 	readings := make(map[string]Reading)
 	for _, d := range s.reg.Devices() {
@@ -63,7 +68,10 @@ func (s *Store) Refresh() {
 			if b, err := bd.Battery(); err == nil {
 				reading := b
 				r.Battery = &reading
+				r.Connected = true
 			}
+		} else {
+			r.Connected = true
 		}
 		readings[d.ID()] = r
 	}
@@ -157,6 +165,7 @@ func (s *Store) WriteState(path string) error {
 		Kind       string  `json:"kind"`
 		Image      string  `json:"image"`
 		HasBattery bool    `json:"hasBattery"`
+		Connected  bool    `json:"connected"`
 		Percent    int     `json:"percent"`
 		Status     string  `json:"status"`
 		LED        ledJSON `json:"led"`
@@ -170,13 +179,16 @@ func (s *Store) WriteState(path string) error {
 			continue
 		}
 		entry := devJSON{
-			ID:    r.Device.ID(),
-			Name:  r.Device.Name(),
-			Kind:  r.Device.Kind().String(),
-			Image: r.Device.Image(),
+			ID:        r.Device.ID(),
+			Name:      r.Device.Name(),
+			Kind:      r.Device.Kind().String(),
+			Image:     r.Device.Image(),
+			Connected: r.Connected,
+		}
+		if _, ok := r.Device.(device.BatteryDevice); ok {
+			entry.HasBattery = true
 		}
 		if r.Battery != nil {
-			entry.HasBattery = true
 			entry.Percent = r.Battery.Percent
 			entry.Status = r.Battery.Status
 		}

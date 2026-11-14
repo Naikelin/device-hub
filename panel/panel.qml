@@ -212,6 +212,7 @@ PanelWindow {
                             readonly property bool ledOn: !!ledCfg.enabled
                             readonly property string activeController: ledCfg.controller || ""
                             readonly property bool hasBattery: !!modelData.hasBattery
+                            readonly property bool online: modelData.connected !== false
                             readonly property int percent: Math.max(0, Math.min(100, modelData.percent || 0))
                             readonly property color levelColor: percent <= 20 ? "#f7768e"
                                                                         : percent <= 50 ? "#e0af68"
@@ -223,6 +224,7 @@ PanelWindow {
                             color: root.cardColor
                             border.width: 1
                             border.color: root.borderColor
+                            opacity: online ? 1 : 0.6
 
                             Image {
                                 id: art
@@ -296,6 +298,7 @@ PanelWindow {
 
                                             MouseArea {
                                                 anchors.fill: parent
+                                                enabled: cardItem.online
                                                 onClicked: root.send({
                                                     action: "controller",
                                                     device: cardItem.devId,
@@ -317,7 +320,7 @@ PanelWindow {
                                 spacing: 6
 
                                 Text {
-                                    visible: cardItem.hasBattery
+                                    visible: cardItem.online && cardItem.hasBattery
                                     anchors.right: parent.right
                                     text: cardItem.percent + "%"
                                     color: cardItem.levelColor
@@ -325,8 +328,17 @@ PanelWindow {
                                     font.bold: true
                                 }
 
+                                Text {
+                                    visible: !cardItem.online
+                                    anchors.right: parent.right
+                                    text: "desconectado"
+                                    color: "#f7768e"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+
                                 Rectangle {
-                                    visible: cardItem.hasLED
+                                    visible: cardItem.hasLED && cardItem.online
                                     anchors.right: parent.right
                                     width: 52
                                     height: 20
@@ -370,7 +382,7 @@ PanelWindow {
 
                             // Battery bar
                             Rectangle {
-                                visible: cardItem.hasBattery
+                                visible: cardItem.online && cardItem.hasBattery
                                 anchors.left: art.right
                                 anchors.leftMargin: 10
                                 anchors.right: parent.right

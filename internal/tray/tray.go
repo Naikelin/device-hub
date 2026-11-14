@@ -69,8 +69,18 @@ func onReady(st *store.Store, interval time.Duration, statePath string, h Handle
 		var tooltip string
 		for _, d := range st.Devices() {
 			r, ok := byID[d.ID()]
-			if !ok || r.Battery == nil {
-				if it, ok := deviceItems[d.ID()]; ok {
+			if !ok {
+				continue
+			}
+			it := deviceItems[d.ID()]
+			if !r.Connected {
+				if it != nil {
+					it.SetTitle(d.Name() + " — desconectado")
+				}
+				continue
+			}
+			if r.Battery == nil {
+				if it != nil {
 					it.SetTitle(d.Name())
 				}
 				continue
@@ -82,7 +92,7 @@ func onReady(st *store.Store, interval time.Duration, statePath string, h Handle
 				tooltip += " · "
 			}
 			tooltip += fmt.Sprintf("%s %d%%", d.Name(), r.Battery.Percent)
-			if it, ok := deviceItems[d.ID()]; ok {
+			if it != nil {
 				it.SetTitle(fmt.Sprintf("%s — %d%%", d.Name(), r.Battery.Percent))
 			}
 		}
