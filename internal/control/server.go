@@ -24,10 +24,11 @@ type manager interface {
 }
 
 type command struct {
-	Action     string `json:"action"` // set | sync | on | off | controller | window | openrgb
+	Action     string `json:"action"` // set | sync | on | off | controller | window | openrgb | profile
 	Device     string `json:"device"`
 	Color      string `json:"color"`
 	Controller string `json:"controller"`
+	Profile    string `json:"profile"`
 }
 
 type reply struct {
@@ -41,13 +42,13 @@ type Server struct {
 	m         manager
 	onWindow  func()
 	onOpenRGB func()
+	onProfile func(name string) error
 	ln        net.Listener
 	path      string
 }
 
-// NewServer listens on path. onWindow opens the RGB window and onOpenRGB opens
-// the OpenRGB GUI; both may be nil.
-func NewServer(path string, m manager, onWindow, onOpenRGB func()) (*Server, error) {
+// NewServer listens on path. The callbacks may be nil.
+func NewServer(path string, m manager, onWindow, onOpenRGB func(), onProfile func(name string) error) (*Server, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func NewServer(path string, m manager, onWindow, onOpenRGB func()) (*Server, err
 		return nil, err
 	}
 	_ = os.Chmod(path, 0o600)
-	return &Server{m: m, onWindow: onWindow, onOpenRGB: onOpenRGB, ln: ln, path: path}, nil
+	return &Server{m: m, onWindow: onWindow, onOpenRGB: onOpenRGB, onProfile: onProfile, ln: ln, path: path}, nil
 }
 
 // Run accepts connections until Close is called.
@@ -140,6 +141,16 @@ func (s *Server) execute(line string) reply {
 	case "openrgb":
 		if s.onOpenRGB != nil {
 			go s.onOpenRGB()
+		}
+	case "profile":
+		if cmd.Profile == "" {
+			return reply{Error: "falta profile"}
+		}
+		if s.onProfile == nil {
+			return reply{Error: "profiles no disponibles"}
+		}
+		if err := s.onProfile(cmd.Profile); err != nil {
+			return reply{Error: err.Error()}
 		}
 	default:
 		return reply{Error: "acción desconocida: " + cmd.Action}

@@ -5,8 +5,8 @@ import Quickshell.Io
 // Device Hub RGB window: the only place that changes LED colours.
 //
 // It is a regular floating window (not a layer-shell panel) so it can stay
-// open next to the hub. The daemon opens it on demand and talks to it through
-// its own IPC target:
+// open next to the hub. The tray ("Colores LED…") opens it through its own IPC
+// target:
 //
 //   qs ipc -p <this file> call devicehub-rgb open
 //

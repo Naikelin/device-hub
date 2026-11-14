@@ -2,10 +2,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -217,8 +220,46 @@ func main() {
 	openRGB := func() { openRGBWindow(*rgbWindow, *rgbTarget) }
 	openOpenRGB := func() { launch("openrgb", "--gui") }
 
+	// Las listas de profiles se leen del disco: no hace falta el servidor para
+	// mostrarlas, y se refrescan en cada tick del tray.
+	refreshProfiles := func() {
+		names, err := openrgb.Profiles()
+		if err != nil {
+			log.Printf("openrgb: profiles: %v", err)
+			return
+		}
+		st.SetProfiles(names)
+		if active, err := openrgb.ActiveProfile(addr); err == nil {
+			st.SetActiveProfile(active)
+		}
+	}
+	refreshProfiles()
+
+	loadProfile := func(name string) error {
+		names, err := openrgb.Profiles()
+		if err != nil {
+			return fmt.Errorf("openrgb: profiles: %w", err)
+		}
+		if !slices.Contains(names, name) {
+			return fmt.Errorf("openrgb: profile desconocido: %s", name)
+		}
+		// El CLI se conecta al servidor SDK y aplica el profile en ~70 ms.
+		// Se prefiere al paquete LOAD_PROFILE porque ese requiere reenviar los
+		// modos de cada controlador después.
+		out, err := exec.Command("openrgb", "--profile", name).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("openrgb --profile %s: %v: %s", name, err, strings.TrimSpace(string(out)))
+		}
+		ledManager.ForgetColors()
+		st.ClearColors()
+		st.SetActiveProfile(name)
+		refreshProfiles()
+		_ = st.WriteState(statePath())
+		return nil
+	}
+
 	// Servidor de control para el panel (Unix socket, JSON por línea).
-	control, err := control.NewServer(controlPath(), ledManager, openRGB, openOpenRGB)
+	control, err := control.NewServer(controlPath(), ledManager, openRGB, openOpenRGB, loadProfile)
 	if err != nil {
 		log.Printf("control server: %v", err)
 	} else {
@@ -254,5 +295,10 @@ func main() {
 		ledManager.RestoreOff()
 	}()
 
-	tray.Run(st, *interval, statePath(), onToggle, openRGB)
+	tray.Run(st, *interval, statePath(), tray.Handlers{
+		Toggle:  onToggle,
+		Colors:  openRGB,
+		OpenRGB: openOpenRGB,
+		Tick:    refreshProfiles,
+	})
 }

@@ -24,7 +24,9 @@ device-hubd (Go)                        Quickshell (QML)
 - **Estado**: el daemon escribe `$XDG_RUNTIME_DIR/device-hub/state.json` y el
   panel lo observa con `Quickshell.Io.FileView` (`watchChanges`). El archivo se
   reescribe en sitio: `atomicWrites: false` y el parseo ocurre en `onLoaded`,
-  después de `reload()`.
+  después de `reload()`. Trae los dispositivos (batería, controladores y flag
+  LED), los colores conocidos y los `profiles` de OpenRGB con su
+  `activeProfile`.
 - **Comandos**: el panel y la ventana RGB mandan JSON por línea a
   `$XDG_RUNTIME_DIR/device-hub/control.sock` con `Quickshell.Io.Socket`.
 - **Toggle**: el click del SNI ejecuta `qs ipc -p <panel.qml> call devicehub
@@ -89,18 +91,28 @@ Los encendidos no se tocan: su color pertenece al perfil de login de OpenRGB.
 El SDK de OpenRGB no tiene paquete para elegir un modo arbitrario (solo
 `SET_CUSTOM_MODE`), así que el quirk Off→Static del Leviathan no se reproduce.
 
-### Ventana RGB
+### Ventana RGB y profiles
 
-El hub ya no cambia colores. La paleta y el hexágono viven en `panel/rgb.qml`,
-una ventana flotante con chips de destino (`Todos` o un dispositivo), paleta de
-8 colores, entrada hex y el estado de cada dispositivo. Se abre desde el botón
-"Control RGB…" del hub o desde el menú del tray.
+El hub no cambia colores. Su pie tiene el selector de **profile de OpenRGB** y
+el botón **Abrir OpenRGB**, que lanza la GUI oficial (`openrgb --gui`). El
+profile activo se consulta al servidor SDK (paquete `GET_ACTIVE_PROFILE`,
+protocolo 6) y se refresca en cada tick del tray; los profiles se listan del
+directorio `~/.config/OpenRGB/profiles/*.json`, así que la lista está aunque el
+servidor no corra.
 
-En la lista de la ventana, los dispositivos cuyo controlador es `openrgb`
-tienen un botón **OpenRGB** que abre la GUI oficial (`openrgb --gui`). Ojo: al
-arrancar, la GUI resetea los dispositivos que estaban en modo Direct; es el
-quirk que documenta `openrgb-nk`, así que después hay que volver a elegir el
-color.
+Elegir un profile lo aplica con `openrgb --profile <nombre>`: el CLI se conecta
+al servidor SDK y tarda ~100 ms. Se prefiere al paquete `LOAD_PROFILE` porque
+ese obliga a reenviar el modo de cada controlador después de cargar.
+
+La paleta rápida sigue en `panel/rgb.qml` (una ventana flotante con chips de
+destino, paleta de 8 colores, entrada hex y el estado de cada dispositivo), pero
+se abre desde el menú del tray (**Colores LED…**), no desde el hub. En su lista,
+los dispositivos con controlador `openrgb` tienen un botón **OpenRGB** que abre
+la GUI.
+
+Ojo: al arrancar, la GUI resetea los dispositivos que estaban en modo Direct; es
+el quirk que documenta `openrgb-nk`. Cargar un profile después los deja como el
+profile diga.
 
 `~/.local/bin/openrgb-nk` no abre la GUI: aplica la iluminación "nk" por CLI y
 lo usa `openrgb.service` al login. Para abrir la interfaz es `openrgb --gui`.
@@ -112,10 +124,13 @@ printf '{"action":"sync","color":"#7aa2f7"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_
 printf '{"action":"set","device":"razer.naga-pro","color":"#ff4d4d"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
 printf '{"action":"off","device":"fantech.atom-he68-pro"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
 printf '{"action":"controller","device":"razer.naga-pro","controller":"openrgb"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
+printf '{"action":"profile","profile":"nk"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
+printf '{"action":"openrgb"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
 printf '{"action":"window"}\n' | socat -t 3 - UNIX-CONNECT:$XDG_RUNTIME_DIR/device-hub/control.sock
 ```
 
-Acciones: `set`, `sync`, `on`, `off`, `controller`, `window`.
+Acciones: `set`, `sync`, `on`, `off`, `controller`, `profile`, `openrgb`,
+`window`.
 
 `socat` necesita `-t 3` (o similar): con el timeout por defecto cierra antes de
 leer la respuesta y el comando puede perderse.
@@ -200,4 +215,5 @@ enrutado del socket de control y el slug/tipo de los controladores.
 - [x] Cerrar con click fuera y con Escape.
 - [x] RGB vía OpenRGB (SDK TCP 6742) + sincronización.
 - [x] Selector de controlador por dispositivo, apagado y ventana RGB aparte.
+- [x] Selector de profile de OpenRGB y acceso a la GUI oficial desde el hub.
 - [ ] OpenRazer completo (DPI, macros) y más dispositivos.

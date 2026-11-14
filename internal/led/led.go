@@ -263,6 +263,14 @@ func (m *Manager) RestoreOff() {
 	}
 }
 
+// ForgetColors drops the cached per-device colours. Used after an OpenRGB
+// profile load changed the hardware behind the manager's back.
+func (m *Manager) ForgetColors() {
+	m.mu.Lock()
+	m.colors = make(map[string][3]uint8)
+	m.mu.Unlock()
+}
+
 func (m *Manager) apply(deviceID string, controller Controller, color [3]uint8, record bool) error {
 	backend, ok := m.backends[controller]
 	if !ok {

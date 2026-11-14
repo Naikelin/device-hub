@@ -37,6 +37,9 @@ type Store struct {
 	led      map[string]LEDState
 	rgb      map[string][3]uint8
 	sync     *[3]uint8
+
+	profiles      []string
+	activeProfile string
 }
 
 func New(reg *device.Registry) *Store {
@@ -108,6 +111,32 @@ func (s *Store) SetSync(color [3]uint8) {
 	s.mu.Unlock()
 }
 
+// ClearColors olvida los colores conocidos, por ejemplo tras cargar un
+// profile de OpenRGB que cambió el hardware por fuera del hub.
+func (s *Store) ClearColors() {
+	s.mu.Lock()
+	s.rgb = make(map[string][3]uint8)
+	s.sync = nil
+	s.mu.Unlock()
+}
+
+// SetProfiles registra la lista de profiles de OpenRGB disponible.
+func (s *Store) SetProfiles(names []string) {
+	if names == nil {
+		names = []string{}
+	}
+	s.mu.Lock()
+	s.profiles = names
+	s.mu.Unlock()
+}
+
+// SetActiveProfile registra el último profile cargado desde el hub.
+func (s *Store) SetActiveProfile(name string) {
+	s.mu.Lock()
+	s.activeProfile = name
+	s.mu.Unlock()
+}
+
 // WriteState escribe el estado como JSON.
 //
 // Se escribe en sitio (sin rename) a propósito: el panel observa el archivo con
@@ -172,13 +201,17 @@ func (s *Store) WriteState(path string) error {
 		h := hexColor(*s.sync)
 		syncColor = &h
 	}
+	profiles := append([]string(nil), s.profiles...)
+	activeProfile := s.activeProfile
 	s.mu.RUnlock()
 
 	state := struct {
-		Devices []devJSON         `json:"devices"`
-		RGB     map[string]string `json:"rgb,omitempty"`
-		Sync    *string           `json:"sync,omitempty"`
-	}{Devices: devs, RGB: rgb, Sync: syncColor}
+		Devices       []devJSON         `json:"devices"`
+		RGB           map[string]string `json:"rgb,omitempty"`
+		Sync          *string           `json:"sync,omitempty"`
+		Profiles      []string          `json:"profiles,omitempty"`
+		ActiveProfile string            `json:"activeProfile,omitempty"`
+	}{Devices: devs, RGB: rgb, Sync: syncColor, Profiles: profiles, ActiveProfile: activeProfile}
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {

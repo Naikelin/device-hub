@@ -9,18 +9,24 @@ import (
 	"github.com/energye/systray"
 )
 
+// Handlers son las acciones que el menú dispara.
+type Handlers struct {
+	Toggle  func() // click en el icono: abre/cierra el panel
+	Colors  func() // ventana de colores del hub (rgb.qml)
+	OpenRGB func() // GUI oficial de OpenRGB
+	Tick    func() // refresca datos externos antes de escribir el estado
+}
+
 // Run arranca el systray (SNI) y se queda hasta Quit.
 // statePath es el archivo JSON que observa el panel QML.
-// onToggle se invoca además al hacer click izquierdo (para la señal D-Bus).
-// onRGB abre la ventana de control RGB.
-func Run(st *store.Store, interval time.Duration, statePath string, onToggle, onRGB func()) {
+func Run(st *store.Store, interval time.Duration, statePath string, h Handlers) {
 	systray.Run(
-		func() { onReady(st, interval, statePath, onToggle, onRGB) },
+		func() { onReady(st, interval, statePath, h) },
 		func() {},
 	)
 }
 
-func onReady(st *store.Store, interval time.Duration, statePath string, onToggle, onRGB func()) {
+func onReady(st *store.Store, interval time.Duration, statePath string, h Handlers) {
 	deviceItems := map[string]*systray.MenuItem{}
 
 	for _, d := range st.Devices() {
@@ -29,14 +35,15 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 		deviceItems[d.ID()] = it
 	}
 	systray.AddSeparator()
-	rgbItem := systray.AddMenuItem("Control RGB…", "Abrir la ventana de color")
+	colorsItem := systray.AddMenuItem("Colores LED…", "Abrir la paleta del hub")
+	openrgbItem := systray.AddMenuItem("OpenRGB…", "Abrir la GUI de OpenRGB")
 	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
 	quitItem := systray.AddMenuItem("Salir", "Cerrar")
 
 	// Click izquierdo -> abrir/cerrar el panel (IPC al panel + señal D-Bus).
 	systray.SetOnClick(func(systray.IMenu) {
-		if onToggle != nil {
-			onToggle()
+		if h.Toggle != nil {
+			h.Toggle()
 		}
 	})
 
@@ -47,6 +54,9 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 	}
 
 	refresh := func() {
+		if h.Tick != nil {
+			h.Tick()
+		}
 		st.Refresh()
 		writeState()
 
@@ -83,9 +93,14 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 		systray.SetTooltip(tooltip)
 	}
 
-	rgbItem.Click(func() {
-		if onRGB != nil {
-			onRGB()
+	colorsItem.Click(func() {
+		if h.Colors != nil {
+			h.Colors()
+		}
+	})
+	openrgbItem.Click(func() {
+		if h.OpenRGB != nil {
+			h.OpenRGB()
 		}
 	})
 	refreshItem.Click(refresh)

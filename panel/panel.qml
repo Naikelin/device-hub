@@ -4,7 +4,8 @@ import Quickshell.Io
 import Quickshell.Wayland
 
 // Device Hub panel: one card per peripheral with battery, LED controller and
-// LED on/off. Colour picking lives in its own window (rgb.qml).
+// LED on/off, plus the OpenRGB profile selector and a shortcut to the official
+// GUI. The optional quick palette lives in rgb.qml (tray -> "Colores LED…").
 //
 // Battery and LED state come from the daemon through a JSON file (Quickshell
 // 0.3.x has no generic D-Bus client). Show/hide is driven by IPC so the tray
@@ -40,6 +41,8 @@ PanelWindow {
     property var state: ({ devices: [] })
     readonly property var devices: state.devices || []
     readonly property var rgbMap: state.rgb || ({})
+    readonly property var profiles: state.profiles || []
+    readonly property string activeProfile: state.activeProfile || ""
 
     // ---- IPC -------------------------------------------------------------
     IpcHandler {
@@ -390,24 +393,89 @@ PanelWindow {
                 }
             }
 
-            // Footer: colour control lives in its own window.
-            Rectangle {
+            // Footer: OpenRGB profile + open the official GUI.
+            Column {
                 width: parent.width
-                height: 34
-                radius: 8
-                color: root.accentColor
+                spacing: 8
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "Control RGB…"
-                    color: "#1a1b26"
-                    font.pixelSize: 12
-                    font.bold: true
+                Item {
+                    width: parent.width
+                    height: 18
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Perfil OpenRGB"
+                        color: root.textColor
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.profiles.length === 0
+                        text: "sin profiles"
+                        color: root.dimColor
+                        font.pixelSize: 10
+                    }
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.send({ action: "window" })
+                // One chip per profile on disk.
+                Flow {
+                    width: parent.width
+                    spacing: 6
+                    visible: root.profiles.length > 0
+
+                    Repeater {
+                        model: root.profiles
+
+                        delegate: Rectangle {
+                            required property string modelData
+                            readonly property bool active: root.activeProfile === modelData
+
+                            width: profileLabel.implicitWidth + 18
+                            height: 22
+                            radius: 11
+                            color: active ? root.accentColor : root.cardColor
+                            border.width: 1
+                            border.color: active ? root.accentColor : root.borderColor
+
+                            Text {
+                                id: profileLabel
+                                anchors.centerIn: parent
+                                text: modelData
+                                color: active ? "#1a1b26" : root.textColor
+                                font.pixelSize: 10
+                                font.bold: active
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.send({ action: "profile", profile: modelData })
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 34
+                    radius: 8
+                    color: root.accentColor
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Abrir OpenRGB"
+                        color: "#1a1b26"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: root.send({ action: "openrgb" })
+                    }
                 }
             }
         }

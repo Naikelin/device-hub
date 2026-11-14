@@ -27,6 +27,7 @@ const (
 	pktUpdateLEDs             = 1050
 	pktUpdateZoneLEDs         = 1051
 	pktSetCustomMode          = 1100
+	pktGetActiveProfile       = 156
 
 	headerSize     = 16
 	clientName     = "device-hub"
@@ -58,7 +59,11 @@ type Zone struct {
 }
 
 // Dial connects to the OpenRGB SDK server at addr and negotiates the protocol.
-func Dial(addr string) (*Client, error) {
+func Dial(addr string) (*Client, error) { return DialMax(addr, maxProtocol) }
+
+// DialMax connects and negotiates up to max. Use 6 for profile queries: the
+// controller data layout above protocol 4 is not parsed yet.
+func DialMax(addr string, max uint32) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("openrgb: connect %s: %w", addr, err)
@@ -67,14 +72,14 @@ func Dial(addr string) (*Client, error) {
 
 	// Negotiate protocol version. A version-0 server sends no reply.
 	_ = conn.SetDeadline(time.Now().Add(dialTimeout))
-	if err := c.writePacket(0, pktRequestProtocolVersion, u32(maxProtocol)); err != nil {
+	if err := c.writePacket(0, pktRequestProtocolVersion, u32(max)); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("openrgb: protocol version: %w", err)
 	}
 	data, err := c.readUntil(pktRequestProtocolVersion)
 	switch {
 	case err == nil && len(data) >= 4:
-		c.version = min(maxProtocol, binary.LittleEndian.Uint32(data))
+		c.version = min(max, binary.LittleEndian.Uint32(data))
 	case err != nil:
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
@@ -145,6 +150,22 @@ func (c *Client) Controllers() ([]Controller, error) {
 // SetCustomMode switches a controller to its most granular (Direct) mode.
 func (c *Client) SetCustomMode(devID uint32) error {
 	return c.writePacket(devID, pktSetCustomMode, nil)
+}
+
+// ActiveProfile returns the profile the server reports as active, or "" when
+// none is active. It requires protocol 6, so dial with DialMax(addr, 6).
+func (c *Client) ActiveProfile() (string, error) {
+	_ = c.conn.SetDeadline(time.Now().Add(requestTimeout))
+	defer c.conn.SetDeadline(time.Time{})
+
+	if err := c.writePacket(0, pktGetActiveProfile, nil); err != nil {
+		return "", fmt.Errorf("openrgb: active profile: %w", err)
+	}
+	data, err := c.readUntil(pktGetActiveProfile)
+	if err != nil {
+		return "", fmt.Errorf("openrgb: active profile: %w", err)
+	}
+	return strings.TrimRight(string(data), "\x00"), nil
 }
 
 // UpdateLEDs pushes one color per LED for the whole controller.

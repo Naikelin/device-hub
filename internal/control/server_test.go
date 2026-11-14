@@ -99,6 +99,23 @@ func TestExecuteOpenRGB(t *testing.T) {
 	}
 }
 
+func TestExecuteProfile(t *testing.T) {
+	var loaded string
+	s := &Server{m: newFakeManager(), onProfile: func(name string) error {
+		loaded = name
+		return nil
+	}}
+	if got := s.execute(`{"action":"profile","profile":"nk"}`); !got.OK {
+		t.Fatalf("reply = %+v", got)
+	}
+	if loaded != "nk" {
+		t.Fatalf("loaded = %q", loaded)
+	}
+	if got := s.execute(`{"action":"profile"}`); got.OK {
+		t.Fatal("missing profile must fail")
+	}
+}
+
 func TestExecuteRejectsBadInput(t *testing.T) {
 	s := &Server{m: newFakeManager()}
 
