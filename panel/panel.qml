@@ -3,15 +3,16 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-// Device Hub panel: popup with one card per peripheral plus RGB control.
+// Device Hub panel: one card per peripheral with battery, LED controller and
+// LED on/off. Colour picking lives in its own window (rgb.qml).
 //
-// Battery and RGB state come from the daemon through a JSON file (Quickshell
+// Battery and LED state come from the daemon through a JSON file (Quickshell
 // 0.3.x has no generic D-Bus client). Show/hide is driven by IPC so the tray
 // click feels instant:
 //
 //   qs ipc -p <this file> call devicehub toggle
 //
-// RGB commands go back to the daemon over a Unix socket, one JSON line per
+// Commands go back to the daemon over a Unix socket, one JSON line per
 // command. The window is a fullscreen transparent Overlay layer so the empty
 // area is the outside-click catcher and the surface can take keyboard focus
 // for Escape (same approach as Ryoku's own context menus).
@@ -39,15 +40,6 @@ PanelWindow {
     property var state: ({ devices: [] })
     readonly property var devices: state.devices || []
     readonly property var rgbMap: state.rgb || ({})
-    readonly property var rgbDevices: devices.filter(d => d.rgb)
-    readonly property var targetModel: [{ id: "all", name: "Todos" }].concat(
-        rgbDevices.map(d => ({ id: d.id, name: d.name })))
-    readonly property var palette: [
-        "#ff4d4d", "#ff9f43", "#ffe066", "#51cf66",
-        "#22d3ee", "#4dabf7", "#a78bfa", "#f8f9fa"
-    ]
-
-    property string rgbTarget: "all"
 
     // ---- IPC -------------------------------------------------------------
     IpcHandler {
@@ -97,10 +89,7 @@ PanelWindow {
 
     Component.onCompleted: control.connected = true
 
-    function applyColor(hex) {
-        const action = root.rgbTarget === "all" ? "sync" : "set"
-        const cmd = { action: action, color: hex }
-        if (action === "set") cmd.device = root.rgbTarget
+    function send(cmd) {
         if (!control.connected) control.connected = true
         control.write(JSON.stringify(cmd) + "\n")
         control.flush()
@@ -139,7 +128,7 @@ PanelWindow {
     Rectangle {
         id: card
 
-        width: 360
+        width: 400
         height: content.implicitHeight + 28
 
         anchors.top: parent.top
@@ -192,214 +181,233 @@ PanelWindow {
                 }
             }
 
-            // Device cards
-            Column {
-                id: list
+            // Device cards, scrollable when the screen is short.
+            Flickable {
+                id: scroll
                 width: parent.width
-                spacing: 8
+                height: Math.min(list.implicitHeight, root.height - 240)
+                contentHeight: list.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
 
-                Repeater {
-                    model: root.devices
+                Column {
+                    id: list
+                    width: scroll.width
+                    spacing: 8
 
-                    delegate: Rectangle {
-                        required property var modelData
-                        width: list.width
-                        height: 76
-                        radius: 12
-                        color: root.cardColor
-                        border.width: 1
-                        border.color: root.borderColor
+                    Repeater {
+                        model: root.devices
 
-                        readonly property int percent: Math.max(0, Math.min(100, modelData.percent || 0))
-                        readonly property color levelColor: percent <= 20 ? "#f7768e"
-                                                                    : percent <= 50 ? "#e0af68"
-                                                                    : "#9ece6a"
+                        delegate: Rectangle {
+                            id: cardItem
+                            required property var modelData
 
-                        Image {
-                            id: art
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 56
-                            height: 56
-                            sourceSize.width: 112
-                            sourceSize.height: 112
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            source: Qt.resolvedUrl("assets/" + (modelData.image || "unknown.svg"))
-                        }
+                            readonly property string devId: modelData.id
+                            readonly property var ledCfg: modelData.led || ({})
+                            readonly property var controllers: ledCfg.controllers || []
+                            readonly property bool hasLED: controllers.length > 0
+                            readonly property bool ledOn: !!ledCfg.enabled
+                            readonly property string activeController: ledCfg.controller || ""
+                            readonly property bool hasBattery: !!modelData.hasBattery
+                            readonly property int percent: Math.max(0, Math.min(100, modelData.percent || 0))
+                            readonly property color levelColor: percent <= 20 ? "#f7768e"
+                                                                        : percent <= 50 ? "#e0af68"
+                                                                        : "#9ece6a"
 
-                        Column {
-                            anchors.left: art.right
-                            anchors.leftMargin: 10
-                            anchors.right: batteryText.left
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 3
-
-                            Text {
-                                width: parent.width
-                                text: modelData.name
-                                color: root.textColor
-                                font.pixelSize: 13
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                width: parent.width
-                                text: modelData.kind + (modelData.status && modelData.status !== "unknown"
-                                                        ? " · " + modelData.status : "")
-                                color: root.dimColor
-                                font.pixelSize: 10
-                                elide: Text.ElideRight
-                            }
-                        }
-
-                        Text {
-                            id: batteryText
-                            anchors.right: parent.right
-                            anchors.rightMargin: 12
-                            anchors.top: parent.top
-                            anchors.topMargin: 12
-                            text: parent.percent + "%"
-                            color: parent.levelColor
-                            font.pixelSize: 16
-                            font.bold: true
-                        }
-
-                        // Current RGB color of an RGB-capable device.
-                        Rectangle {
-                            visible: modelData.rgb
-                            width: 10
-                            height: 10
-                            radius: 5
-                            color: root.rgbMap[modelData.id] || "#3b3f5c"
+                            width: list.width
+                            height: 92
+                            radius: 12
+                            color: root.cardColor
                             border.width: 1
-                            border.color: "#00000055"
-                            anchors.right: parent.right
-                            anchors.rightMargin: 12
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 20
-                        }
+                            border.color: root.borderColor
 
-                        // Battery bar
-                        Rectangle {
-                            anchors.left: art.right
-                            anchors.leftMargin: 10
-                            anchors.right: parent.right
-                            anchors.rightMargin: 12
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 12
-                            height: 4
-                            radius: 2
-                            color: "#2f334d"
+                            Image {
+                                id: art
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 52
+                                height: 52
+                                sourceSize.width: 104
+                                sourceSize.height: 104
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                source: Qt.resolvedUrl("assets/" + (modelData.image || "unknown.svg"))
+                            }
 
+                            Column {
+                                anchors.left: art.right
+                                anchors.leftMargin: 10
+                                anchors.right: rightColumn.left
+                                anchors.rightMargin: 8
+                                anchors.top: parent.top
+                                anchors.topMargin: 12
+                                spacing: 3
+
+                                Text {
+                                    width: parent.width
+                                    text: modelData.name
+                                    color: root.textColor
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: modelData.kind + (modelData.status && modelData.status !== "unknown"
+                                                            ? " · " + modelData.status : "")
+                                    color: root.dimColor
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+
+                                // Controller selector: one chip per backend.
+                                Flow {
+                                    width: parent.width
+                                    spacing: 4
+                                    visible: cardItem.hasLED
+
+                                    Repeater {
+                                        model: cardItem.controllers
+
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            readonly property bool active: cardItem.activeController === modelData
+
+                                            width: chipLabel.implicitWidth + 14
+                                            height: 18
+                                            radius: 9
+                                            color: active ? root.accentColor : "transparent"
+                                            border.width: 1
+                                            border.color: active ? root.accentColor : root.borderColor
+
+                                            Text {
+                                                id: chipLabel
+                                                anchors.centerIn: parent
+                                                text: modelData
+                                                color: active ? "#1a1b26" : root.dimColor
+                                                font.pixelSize: 9
+                                                font.bold: active
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: root.send({
+                                                    action: "controller",
+                                                    device: cardItem.devId,
+                                                    controller: modelData
+                                                })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Battery level + LED switch.
+                            Column {
+                                id: rightColumn
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.top: parent.top
+                                anchors.topMargin: 12
+                                spacing: 6
+
+                                Text {
+                                    visible: cardItem.hasBattery
+                                    anchors.right: parent.right
+                                    text: cardItem.percent + "%"
+                                    color: cardItem.levelColor
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+
+                                Rectangle {
+                                    visible: cardItem.hasLED
+                                    anchors.right: parent.right
+                                    width: 52
+                                    height: 20
+                                    radius: 10
+                                    color: cardItem.ledOn ? root.accentColor : "transparent"
+                                    border.width: 1
+                                    border.color: cardItem.ledOn ? root.accentColor : root.borderColor
+
+                                    Row {
+                                        anchors.centerIn: parent
+                                        spacing: 5
+
+                                        Rectangle {
+                                            width: 8
+                                            height: 8
+                                            radius: 4
+                                            color: cardItem.ledOn
+                                                   ? (root.rgbMap[cardItem.devId] || "#1a1b26")
+                                                   : "transparent"
+                                            border.width: 1
+                                            border.color: cardItem.ledOn ? "#00000055" : root.dimColor
+                                        }
+
+                                        Text {
+                                            text: "LED"
+                                            color: cardItem.ledOn ? "#1a1b26" : root.dimColor
+                                            font.pixelSize: 9
+                                            font.bold: cardItem.ledOn
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: root.send({
+                                            action: cardItem.ledOn ? "off" : "on",
+                                            device: cardItem.devId
+                                        })
+                                    }
+                                }
+                            }
+
+                            // Battery bar
                             Rectangle {
-                                width: parent.width * (parent.parent.percent / 100)
-                                height: parent.height
+                                visible: cardItem.hasBattery
+                                anchors.left: art.right
+                                anchors.leftMargin: 10
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 10
+                                height: 4
                                 radius: 2
-                                color: parent.parent.levelColor
+                                color: "#2f334d"
+
+                                Rectangle {
+                                    width: parent.width * (cardItem.percent / 100)
+                                    height: parent.height
+                                    radius: 2
+                                    color: cardItem.levelColor
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Divider
+            // Footer: colour control lives in its own window.
             Rectangle {
                 width: parent.width
-                height: 1
-                color: root.borderColor
-            }
+                height: 34
+                radius: 8
+                color: root.accentColor
 
-            // RGB section
-            Column {
-                width: parent.width
-                spacing: 8
-
-                Item {
-                    width: parent.width
-                    height: 20
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "RGB"
-                        color: root.textColor
-                        font.pixelSize: 13
-                        font.bold: true
-                    }
-
-                    Text {
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.rgbTarget === "all" ? "sincronizar todos" : "solo un dispositivo"
-                        color: root.dimColor
-                        font.pixelSize: 10
-                    }
+                Text {
+                    anchors.centerIn: parent
+                    text: "Control RGB…"
+                    color: "#1a1b26"
+                    font.pixelSize: 12
+                    font.bold: true
                 }
 
-                // Target chips: "Todos" plus each RGB device.
-                Flow {
-                    width: parent.width
-                    spacing: 6
-
-                    Repeater {
-                        model: root.targetModel
-
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool active: root.rgbTarget === modelData.id
-
-                            width: label.implicitWidth + 18
-                            height: 24
-                            radius: 12
-                            color: active ? root.accentColor : root.cardColor
-                            border.width: 1
-                            border.color: active ? root.accentColor : root.borderColor
-
-                            Text {
-                                id: label
-                                anchors.centerIn: parent
-                                text: modelData.name
-                                color: active ? "#1a1b26" : root.textColor
-                                font.pixelSize: 10
-                                font.bold: active
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: root.rgbTarget = modelData.id
-                            }
-                        }
-                    }
-                }
-
-                // Palette: click a swatch to apply it to the selected target.
-                Row {
-                    width: parent.width
-                    spacing: 6
-
-                    Repeater {
-                        model: root.palette
-
-                        delegate: Rectangle {
-                            required property string modelData
-
-                            width: (parent.width - 7 * 6) / 8
-                            height: 28
-                            radius: 8
-                            color: modelData
-                            border.width: 1
-                            border.color: "#00000055"
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: root.applyColor(modelData)
-                            }
-                        }
-                    }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.send({ action: "window" })
                 }
             }
         }
