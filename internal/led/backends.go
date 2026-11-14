@@ -31,6 +31,8 @@ func NewOpenRGBBackend(addr string, names map[string]string) *OpenRGBBackend {
 }
 
 // Set switches the controller to its Direct mode and pushes one colour per LED.
+// The Leviathan V2 X is the exception: its Direct mode never lights up, so it
+// needs the Off -> Static transition the firmware expects.
 func (b *OpenRGBBackend) Set(deviceID string, color [3]uint8) error {
 	name := b.names[deviceID]
 	if name == "" {
@@ -43,6 +45,9 @@ func (b *OpenRGBBackend) Set(deviceID string, color [3]uint8) error {
 	ctrl, err := b.resolve(name)
 	if err != nil {
 		return err
+	}
+	if isLeviathan(name) {
+		return b.setStatic(ctrl, color)
 	}
 	if ctrl.NumLEDs <= 0 {
 		return fmt.Errorf("led: OpenRGB reporta %q sin LEDs", name)
@@ -62,9 +67,68 @@ func (b *OpenRGBBackend) Set(deviceID string, color [3]uint8) error {
 	return nil
 }
 
-// Off paints every LED black, which is the closest the SDK gets to off.
+// Off paints every LED black, which is the closest the SDK gets to off. The
+// Leviathan has a real Off mode, so it is used instead.
 func (b *OpenRGBBackend) Off(deviceID string) error {
-	return b.Set(deviceID, [3]uint8{})
+	name := b.names[deviceID]
+	if name == "" {
+		return fmt.Errorf("led: OpenRGB no conoce %s", deviceID)
+	}
+	if !isLeviathan(name) {
+		return b.Set(deviceID, [3]uint8{})
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ctrl, err := b.resolve(name)
+	if err != nil {
+		return err
+	}
+	off, ok := modeByName(ctrl, "Off")
+	if !ok {
+		return fmt.Errorf("led: %q no reporta el modo Off", name)
+	}
+	if err := b.client.UpdateMode(ctrl.Index, off); err != nil {
+		b.reset()
+		return fmt.Errorf("led: OpenRGB apagar %q: %w", name, err)
+	}
+	return nil
+}
+
+// setStatic applies Off and then Static with the wanted colour. It must be
+// called with b.mu held.
+func (b *OpenRGBBackend) setStatic(ctrl rgb.Controller, color [3]uint8) error {
+	off, ok := modeByName(ctrl, "Off")
+	if !ok {
+		return fmt.Errorf("led: %q no reporta el modo Off", ctrl.Name)
+	}
+	static, ok := modeByName(ctrl, "Static")
+	if !ok {
+		return fmt.Errorf("led: %q no reporta el modo Static", ctrl.Name)
+	}
+	if err := b.client.UpdateMode(ctrl.Index, off); err != nil {
+		b.reset()
+		return fmt.Errorf("led: OpenRGB Off %q: %w", ctrl.Name, err)
+	}
+	static.Colors = [][3]uint8{color}
+	if err := b.client.UpdateMode(ctrl.Index, static); err != nil {
+		b.reset()
+		return fmt.Errorf("led: OpenRGB Static %q: %w", ctrl.Name, err)
+	}
+	return nil
+}
+
+func modeByName(ctrl rgb.Controller, name string) (rgb.Mode, bool) {
+	for _, m := range ctrl.Modes {
+		if strings.EqualFold(m.Name, name) {
+			return m, true
+		}
+	}
+	return rgb.Mode{}, false
+}
+
+func isLeviathan(name string) bool {
+	return strings.Contains(strings.ToLower(name), "leviathan")
 }
 
 // resolve finds a controller by name, reconnecting once when the cached list is

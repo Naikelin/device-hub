@@ -12,7 +12,7 @@ import (
 func buildControllerBlock(name string, numLEDs int, zones []struct {
 	name string
 	leds int
-}) []byte {
+}, modes []Mode) []byte {
 	var b []byte
 	put := func(v uint32) { b = binary.LittleEndian.AppendUint32(b, v) }
 	put16 := func(v uint16) { b = binary.LittleEndian.AppendUint16(b, v) }
@@ -25,13 +25,16 @@ func buildControllerBlock(name string, numLEDs int, zones []struct {
 	put(0) // data_size (patched at the end)
 	put(0) // device type
 	str(name)
-	str("")  // vendor
-	str("")  // description
-	str("")  // version
-	str("")  // serial
-	str("")  // location
-	put16(0) // num_modes
-	put(0)   // active_mode
+	str("") // vendor
+	str("") // description
+	str("") // version
+	str("") // serial
+	str("") // location
+	put16(uint16(len(modes)))
+	put(0) // active_mode
+	for _, m := range modes {
+		b = append(b, encodeMode(m, 4)...)
+	}
 	put16(uint16(len(zones)))
 	for _, z := range zones {
 		str(z.name)
@@ -57,7 +60,7 @@ func TestParseController(t *testing.T) {
 	raw := buildControllerBlock("Test Device", 3, []struct {
 		name string
 		leds int
-	}{{"Logo", 1}, {"Keys", 2}})
+	}{{"Logo", 1}, {"Keys", 2}}, nil)
 
 	ctrl, err := parseController(raw, 4)
 	if err != nil {
@@ -77,8 +80,67 @@ func TestParseController(t *testing.T) {
 	}
 }
 
+func TestParseControllerModes(t *testing.T) {
+	raw := buildControllerBlock("Leviathan", 2, nil, []Mode{
+		{Name: "Off", Value: 1},
+		{Name: "Static", Value: 2, Flags: 80, Brightness: 255, ColorMode: 2,
+			Colors: [][3]uint8{{1, 2, 3}}},
+	})
+
+	ctrl, err := parseController(raw, 4)
+	if err != nil {
+		t.Fatalf("parseController: %v", err)
+	}
+	if len(ctrl.Modes) != 2 {
+		t.Fatalf("len(Modes) = %d, want 2", len(ctrl.Modes))
+	}
+	if ctrl.Modes[0].Name != "Off" || ctrl.Modes[0].Index != 0 {
+		t.Errorf("mode[0] = %+v, want Off/0", ctrl.Modes[0])
+	}
+	static := ctrl.Modes[1]
+	if static.Name != "Static" || static.Value != 2 || static.Flags != 80 {
+		t.Errorf("mode[1] = %+v, want Static/2/80", static)
+	}
+	if len(static.Colors) != 1 || static.Colors[0] != [3]uint8{1, 2, 3} {
+		t.Errorf("static colors = %v, want [[1 2 3]]", static.Colors)
+	}
+}
+
+func TestEncodeModeRoundTrip(t *testing.T) {
+	want := Mode{
+		Index:      2,
+		Name:       "Static",
+		Value:      7,
+		Flags:      80,
+		SpeedMin:   1,
+		SpeedMax:   3,
+		ColorsMin:  1,
+		ColorsMax:  1,
+		Speed:      2,
+		Brightness: 255,
+		Direction:  0,
+		ColorMode:  2,
+		Colors:     [][3]uint8{{9, 8, 7}},
+	}
+
+	p := &parser{buf: encodeMode(want, 4)}
+	got := parseMode(p, 4)
+	if p.err != nil {
+		t.Fatalf("parseMode: %v", p.err)
+	}
+	if got.Name != want.Name || got.Value != want.Value || got.Flags != want.Flags {
+		t.Errorf("header = %+v", got)
+	}
+	if got.Speed != want.Speed || got.Brightness != want.Brightness || got.ColorMode != want.ColorMode {
+		t.Errorf("fields = %+v", got)
+	}
+	if len(got.Colors) != 1 || got.Colors[0] != [3]uint8{9, 8, 7} {
+		t.Errorf("colors = %v", got.Colors)
+	}
+}
+
 func TestParseControllerTruncated(t *testing.T) {
-	raw := buildControllerBlock("Test", 2, nil)
+	raw := buildControllerBlock("Test", 2, nil, nil)
 	if _, err := parseController(raw[:len(raw)-8], 4); err == nil {
 		t.Fatal("expected an error for a truncated block")
 	}

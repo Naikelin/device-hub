@@ -90,8 +90,12 @@ Al arrancar, el daemon re-apaga solo los dispositivos que quedaron apagados
 (`leds.json`), para que el ahorro de batería del Fantech sobreviva un reinicio.
 Los encendidos no se tocan: su color pertenece al perfil de login de OpenRGB.
 
-El SDK de OpenRGB no tiene paquete para elegir un modo arbitrario (solo
-`SET_CUSTOM_MODE`), así que el quirk Off→Static del Leviathan no se reproduce.
+El SDK de OpenRGB no tiene un paquete para "elegir un modo arbitrario", pero sí
+`UPDATE_MODE` (paquete 1101), que manda el bloque completo del modo. El backend
+`openrgb` lo usa para el **Leviathan V2 X**: su modo Direct no enciende, así que
+detecta el nombre y hace la transición `Off → Static` con el color pedido.
+Apagarlo usa el modo `Off` real en vez de negro. El resto de los controladores
+sigue con `SET_CUSTOM_MODE` + `UPDATE_LEDS`.
 
 ### Ventana RGB y profiles
 

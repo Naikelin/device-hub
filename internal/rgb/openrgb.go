@@ -7,6 +7,7 @@
 package rgb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ const (
 	pktUpdateLEDs             = 1050
 	pktUpdateZoneLEDs         = 1051
 	pktSetCustomMode          = 1100
+	pktUpdateMode             = 1101
 	pktGetActiveProfile       = 156
 
 	headerSize     = 16
@@ -48,8 +50,28 @@ type Controller struct {
 	Name       string
 	NumLEDs    int
 	Zones      []Zone
+	Modes      []Mode
 	Colors     [][3]uint8
 	ActiveMode int
+}
+
+// Mode is one lighting mode of a controller.
+type Mode struct {
+	Index         int
+	Name          string
+	Value         int32
+	Flags         uint32
+	SpeedMin      uint32
+	SpeedMax      uint32
+	BrightnessMin uint32
+	BrightnessMax uint32
+	ColorsMin     uint32
+	ColorsMax     uint32
+	Speed         uint32
+	Brightness    uint32
+	Direction     uint32
+	ColorMode     uint32
+	Colors        [][3]uint8
 }
 
 // Zone is a separately addressable LED region of a controller.
@@ -150,6 +172,18 @@ func (c *Client) Controllers() ([]Controller, error) {
 // SetCustomMode switches a controller to its most granular (Direct) mode.
 func (c *Client) SetCustomMode(devID uint32) error {
 	return c.writePacket(devID, pktSetCustomMode, nil)
+}
+
+// UpdateMode applies one mode (with its colours) to a controller. It is the
+// only way the SDK exposes to latch a non-Direct mode, such as the Static mode
+// the Leviathan firmware needs.
+func (c *Client) UpdateMode(devID uint32, mode Mode) error {
+	body := encodeMode(mode, c.version)
+	data := make([]byte, 8+len(body))
+	binary.LittleEndian.PutUint32(data[0:], uint32(8+len(body)))
+	binary.LittleEndian.PutUint32(data[4:], uint32(mode.Index))
+	copy(data[8:], body)
+	return c.writePacket(devID, pktUpdateMode, data)
 }
 
 // ActiveProfile returns the profile the server reports as active, or "" when
@@ -327,8 +361,11 @@ func parseController(raw []byte, version uint32) (Controller, error) {
 
 	numModes := int(p.u16())
 	ctrl.ActiveMode = int(p.i32())
+	ctrl.Modes = make([]Mode, 0, numModes)
 	for i := 0; i < numModes; i++ {
-		skipMode(p, version)
+		mode := parseMode(p, version)
+		mode.Index = i
+		ctrl.Modes = append(ctrl.Modes, mode)
 	}
 
 	numZones := int(p.u16())
@@ -360,28 +397,82 @@ func parseController(raw []byte, version uint32) (Controller, error) {
 	return ctrl, nil
 }
 
-func skipMode(p *parser, version uint32) {
-	_ = p.str() // name
+func parseMode(p *parser, version uint32) Mode {
+	m := Mode{Name: p.str()}
 	if version < 6 {
-		_ = p.i32() // value
+		m.Value = p.i32()
 	}
-	_ = p.u32() // flags
-	_ = p.u32() // speed_min
-	_ = p.u32() // speed_max
+	m.Flags = p.u32()
+	m.SpeedMin = p.u32()
+	m.SpeedMax = p.u32()
 	if version >= 3 {
-		_ = p.u32() // brightness_min
-		_ = p.u32() // brightness_max
+		m.BrightnessMin = p.u32()
+		m.BrightnessMax = p.u32()
 	}
-	_ = p.u32() // colors_min
-	_ = p.u32() // colors_max
-	_ = p.u32() // speed
+	m.ColorsMin = p.u32()
+	m.ColorsMax = p.u32()
+	m.Speed = p.u32()
 	if version >= 3 {
-		_ = p.u32() // brightness
+		m.Brightness = p.u32()
 	}
-	_ = p.u32() // direction
-	_ = p.u32() // color_mode
+	m.Direction = p.u32()
+	m.ColorMode = p.u32()
 	numColors := int(p.u16())
-	p.skip(numColors * 4) // mode colors
+	for i := 0; i < numColors; i++ {
+		if !p.need(4) {
+			break
+		}
+		m.Colors = append(m.Colors, [3]uint8{p.buf[p.pos], p.buf[p.pos+1], p.buf[p.pos+2]})
+		p.pos += 4
+	}
+	return m
+}
+
+// encodeMode serializes a Mode for UpdateMode/SaveMode.
+func encodeMode(m Mode, version uint32) []byte {
+	var b bytes.Buffer
+	putStr(&b, m.Name)
+	if version < 6 {
+		putU32(&b, uint32(m.Value))
+	}
+	putU32(&b, m.Flags)
+	putU32(&b, m.SpeedMin)
+	putU32(&b, m.SpeedMax)
+	if version >= 3 {
+		putU32(&b, m.BrightnessMin)
+		putU32(&b, m.BrightnessMax)
+	}
+	putU32(&b, m.ColorsMin)
+	putU32(&b, m.ColorsMax)
+	putU32(&b, m.Speed)
+	if version >= 3 {
+		putU32(&b, m.Brightness)
+	}
+	putU32(&b, m.Direction)
+	putU32(&b, m.ColorMode)
+	putU16(&b, uint16(len(m.Colors)))
+	for _, col := range m.Colors {
+		b.Write([]byte{col[0], col[1], col[2], 0})
+	}
+	return b.Bytes()
+}
+
+func putStr(b *bytes.Buffer, s string) {
+	putU16(b, uint16(len(s)+1))
+	b.WriteString(s)
+	b.WriteByte(0)
+}
+
+func putU16(b *bytes.Buffer, v uint16) {
+	var buf [2]byte
+	binary.LittleEndian.PutUint16(buf[:], v)
+	b.Write(buf[:])
+}
+
+func putU32(b *bytes.Buffer, v uint32) {
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], v)
+	b.Write(buf[:])
 }
 
 func parseZone(p *parser, version uint32) Zone {
