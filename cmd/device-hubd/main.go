@@ -13,6 +13,7 @@ import (
 	"device-hub/internal/providers/fantech"
 	"device-hub/internal/providers/g435"
 	"device-hub/internal/providers/razer"
+	"device-hub/internal/rgb"
 	"device-hub/internal/store"
 	"device-hub/internal/tray"
 )
@@ -40,6 +41,10 @@ func statePath() string {
 	return filepath.Join(os.TempDir(), "device-hub-state.json")
 }
 
+func controlPath() string {
+	return filepath.Join(filepath.Dir(statePath()), "control.sock")
+}
+
 func main() {
 	interval := flag.Duration("interval", 60*time.Second, "intervalo de refresco")
 	panel := flag.String("panel", defaultPanelPath(), "ruta a panel.qml (vacío desactiva el panel)")
@@ -52,8 +57,18 @@ func main() {
 	reg.Register(fantech.Fantech{})
 
 	st := store.New(reg)
+	rgbManager := rgb.NewManager(reg, st, statePath())
 
-	svc, err := dbus.NewService(st)
+	// Servidor de control para el panel (Unix socket, JSON por línea).
+	control, err := rgb.NewServer(controlPath(), rgbManager)
+	if err != nil {
+		log.Printf("rgb control server: %v", err)
+	} else {
+		go control.Run()
+		defer control.Close()
+	}
+
+	svc, err := dbus.NewService(st, rgbManager)
 	if err != nil {
 		log.Fatalf("dbus: %v", err)
 	}
