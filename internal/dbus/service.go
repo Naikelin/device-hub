@@ -10,7 +10,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"device-hub/internal/rgb"
+	"device-hub/internal/led"
 	"device-hub/internal/store"
 )
 
@@ -33,16 +33,16 @@ type DeviceInfo struct {
 type Service struct {
 	conn  *dbus.Conn
 	store *store.Store
-	rgb   *rgb.Manager
+	led   *led.Manager
 }
 
 // NewService toma el nombre org.devicehub y exporta el objeto Manager.
-func NewService(store *store.Store, rgbManager *rgb.Manager) (*Service, error) {
+func NewService(st *store.Store, ledManager *led.Manager) (*Service, error) {
 	conn, err := dbus.SessionBus()
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{conn: conn, store: store, rgb: rgbManager}
+	s := &Service{conn: conn, store: st, led: ledManager}
 
 	reply, err := conn.RequestName(BusName, dbus.NameFlagDoNotQueue)
 	if err != nil {
@@ -65,12 +65,16 @@ func (s *Service) GetDevices() ([]DeviceInfo, *dbus.Error) {
 	readings := s.store.Readings()
 	out := make([]DeviceInfo, 0, len(readings))
 	for _, r := range readings {
+		var percent int
+		if r.Battery != nil {
+			percent = r.Battery.Percent
+		}
 		out = append(out, DeviceInfo{
 			ID:      r.Device.ID(),
 			Name:    r.Device.Name(),
 			Kind:    r.Device.Kind().String(),
 			Image:   r.Device.Image(),
-			Percent: int32(r.Battery.Percent),
+			Percent: int32(percent),
 		})
 	}
 	return out, nil
@@ -78,27 +82,49 @@ func (s *Service) GetDevices() ([]DeviceInfo, *dbus.Error) {
 
 // SetRGB aplica un color (0-255 por canal) a un dispositivo.
 func (s *Service) SetRGB(deviceID string, r, g, b byte) *dbus.Error {
-	if s.rgb == nil {
-		return dbus.MakeFailedError(errors.New("rgb no disponible"))
+	if s.led == nil {
+		return dbus.MakeFailedError(errors.New("led no disponible"))
 	}
 	color := [3]uint8{r, g, b}
-	if err := s.rgb.Set(deviceID, color); err != nil {
+	if err := s.led.Apply(deviceID, color); err != nil {
 		return dbus.MakeFailedError(err)
 	}
 	s.emitRGB(deviceID, color)
 	return nil
 }
 
-// SyncRGB aplica el mismo color a todos los dispositivos RGB.
+// SyncRGB aplica el mismo color a todos los dispositivos encendidos.
 func (s *Service) SyncRGB(r, g, b byte) *dbus.Error {
-	if s.rgb == nil {
-		return dbus.MakeFailedError(errors.New("rgb no disponible"))
+	if s.led == nil {
+		return dbus.MakeFailedError(errors.New("led no disponible"))
 	}
 	color := [3]uint8{r, g, b}
-	if err := s.rgb.Sync(color); err != nil {
+	if err := s.led.Sync(color); err != nil {
 		return dbus.MakeFailedError(err)
 	}
 	s.emitRGB("", color)
+	return nil
+}
+
+// SetLED enciende o apaga los LEDs de un dispositivo.
+func (s *Service) SetLED(deviceID string, enabled bool) *dbus.Error {
+	if s.led == nil {
+		return dbus.MakeFailedError(errors.New("led no disponible"))
+	}
+	if err := s.led.SetEnabled(deviceID, enabled); err != nil {
+		return dbus.MakeFailedError(err)
+	}
+	return nil
+}
+
+// SetController cambia el backend que maneja los LEDs de un dispositivo.
+func (s *Service) SetController(deviceID, controller string) *dbus.Error {
+	if s.led == nil {
+		return dbus.MakeFailedError(errors.New("led no disponible"))
+	}
+	if err := s.led.SetController(deviceID, led.Controller(controller)); err != nil {
+		return dbus.MakeFailedError(err)
+	}
 	return nil
 }
 

@@ -6,14 +6,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"device-hub/internal/control"
 	"device-hub/internal/dbus"
 	"device-hub/internal/device"
+	"device-hub/internal/led"
 	"device-hub/internal/providers/fantech"
 	"device-hub/internal/providers/g435"
+	"device-hub/internal/providers/openrgb"
 	"device-hub/internal/providers/razer"
-	"device-hub/internal/rgb"
 	"device-hub/internal/store"
 	"device-hub/internal/tray"
 )
@@ -34,6 +37,15 @@ func defaultPanelPath() string {
 	return ""
 }
 
+// defaultRGBPath devuelve panel/rgb.qml junto al panel.
+func defaultRGBPath() string {
+	panel := defaultPanelPath()
+	if panel == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(panel), "rgb.qml")
+}
+
 func statePath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
 		return filepath.Join(dir, "device-hub", "state.json")
@@ -45,10 +57,117 @@ func controlPath() string {
 	return filepath.Join(filepath.Dir(statePath()), "control.sock")
 }
 
+func ledConfigPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		dir = os.Getenv("HOME") + "/.config"
+	}
+	return filepath.Join(dir, "device-hub", "leds.json")
+}
+
+// discoverOpenRGB espera a que el servidor SDK termine de detectar los
+// controladores. openrgb-server tarda entre 5 y 10 s; se corta cuando el
+// recuento se estabiliza o cuando el servidor no responde.
+func discoverOpenRGB(addr string) ([]device.Device, map[string]string) {
+	claimed := map[string]string{"naga pro": razer.Razer{}.ID()}
+	var (
+		devices  []device.Device
+		names    = map[string]string{}
+		last     = -1
+		failures int
+	)
+	deadline := time.Now().Add(12 * time.Second)
+	for time.Now().Before(deadline) {
+		devs, n, err := openrgb.Enumerate(addr, claimed)
+		if err != nil {
+			failures++
+			if failures >= 3 {
+				log.Printf("openrgb: servidor SDK no disponible: %v", err)
+				break
+			}
+		} else {
+			failures = 0
+			if len(devs) > 0 && len(devs) == last {
+				break
+			}
+			last = len(devs)
+			devices, names = devs, n
+		}
+		time.Sleep(time.Second)
+	}
+	return devices, names
+}
+
+// ledPlan decide qué controladores acepta cada dispositivo y con cuál arranca.
+func ledPlan(reg *device.Registry) (map[string][]led.Controller, map[string]led.Choice) {
+	available := make(map[string][]led.Controller)
+	defaults := make(map[string]led.Choice)
+	for _, d := range reg.Devices() {
+		switch d.ID() {
+		case razer.Razer{}.ID():
+			available[d.ID()] = []led.Controller{led.OpenRazer, led.OpenRGB}
+			defaults[d.ID()] = led.Choice{Controller: led.OpenRazer, Enabled: true}
+		case fantech.DeviceID:
+			available[d.ID()] = []led.Controller{led.Direct}
+			defaults[d.ID()] = led.Choice{Controller: led.Direct, Enabled: true}
+		case g435.G435{}.ID():
+			// El G435 no tiene LEDs: solo reporta batería.
+			available[d.ID()] = nil
+			defaults[d.ID()] = led.Choice{}
+		default:
+			available[d.ID()] = []led.Controller{led.OpenRGB}
+			defaults[d.ID()] = led.Choice{Controller: led.OpenRGB, Enabled: true}
+		}
+	}
+	return available, defaults
+}
+
+// razerSerials mapea el dispositivo Razer a su serial de openrazer.
+func razerSerials() map[string]string {
+	serials := map[string]string{}
+	serial, err := razer.Serial()
+	if err != nil {
+		log.Printf("razer: serial de openrazer: %v", err)
+		return serials
+	}
+	serials[razer.Razer{}.ID()] = serial
+	return serials
+}
+
+var (
+	spawnMu   sync.Mutex
+	lastSpawn time.Time
+)
+
+// openRGBWindow muestra la ventana RGB si ya existe y, si no, la lanza.
+func openRGBWindow(path, target string) {
+	if path == "" {
+		return
+	}
+	if err := exec.Command("qs", "ipc", "-p", path, "call", target, "open").Run(); err == nil {
+		return
+	}
+	spawnMu.Lock()
+	if time.Since(lastSpawn) < 2*time.Second {
+		spawnMu.Unlock()
+		return
+	}
+	lastSpawn = time.Now()
+	spawnMu.Unlock()
+	go func() {
+		out, err := exec.Command("qs", "-p", path).CombinedOutput()
+		if err != nil {
+			log.Printf("rgb window: %v: %s", err, out)
+		}
+	}()
+}
+
 func main() {
 	interval := flag.Duration("interval", 60*time.Second, "intervalo de refresco")
 	panel := flag.String("panel", defaultPanelPath(), "ruta a panel.qml (vacío desactiva el panel)")
+	rgbWindow := flag.String("rgb", defaultRGBPath(), "ruta a rgb.qml (vacío desactiva la ventana RGB)")
 	ipcTarget := flag.String("ipc-target", "devicehub", "target de IPC registrado por el panel")
+	rgbTarget := flag.String("rgb-ipc-target", "devicehub-rgb", "target de IPC de la ventana RGB")
 	flag.Parse()
 
 	reg := device.NewRegistry()
@@ -56,19 +175,45 @@ func main() {
 	reg.Register(g435.G435{})
 	reg.Register(fantech.Fantech{})
 
+	addr := openrgb.Address()
+	openrgbDevices, names := discoverOpenRGB(addr)
+	for _, d := range openrgbDevices {
+		reg.Register(d)
+	}
+	log.Printf("openrgb: %d controladores registrados", len(openrgbDevices))
+
 	st := store.New(reg)
-	rgbManager := rgb.NewManager(reg, st, statePath())
+
+	backends := map[led.Controller]led.Backend{
+		led.OpenRGB:   led.NewOpenRGBBackend(addr, names),
+		led.OpenRazer: led.NewOpenRazerBackend(razerSerials()),
+		led.Direct:    led.DirectBackend{},
+	}
+	available, defaults := ledPlan(reg)
+	ledManager, err := led.NewManager(led.Config{
+		Path:      ledConfigPath(),
+		StatePath: statePath(),
+		Backends:  backends,
+		Available: available,
+		Defaults:  defaults,
+		Store:     st,
+	})
+	if err != nil {
+		log.Fatalf("led: %v", err)
+	}
+
+	openRGB := func() { openRGBWindow(*rgbWindow, *rgbTarget) }
 
 	// Servidor de control para el panel (Unix socket, JSON por línea).
-	control, err := rgb.NewServer(controlPath(), rgbManager)
+	control, err := control.NewServer(controlPath(), ledManager, openRGB)
 	if err != nil {
-		log.Printf("rgb control server: %v", err)
+		log.Printf("control server: %v", err)
 	} else {
 		go control.Run()
 		defer control.Close()
 	}
 
-	svc, err := dbus.NewService(st, rgbManager)
+	svc, err := dbus.NewService(st, ledManager)
 	if err != nil {
 		log.Fatalf("dbus: %v", err)
 	}
@@ -88,5 +233,13 @@ func main() {
 		}()
 	}
 
-	tray.Run(st, *interval, statePath(), onToggle)
+	// Los LEDs apagados para ahorrar batería se mantienen apagados tras un
+	// reinicio del daemon. Los encendidos se dejan como los dejó el perfil de
+	// login de OpenRGB.
+	go func() {
+		time.Sleep(2 * time.Second)
+		ledManager.RestoreOff()
+	}()
+
+	tray.Run(st, *interval, statePath(), onToggle, openRGB)
 }

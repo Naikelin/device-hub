@@ -12,14 +12,15 @@ import (
 // Run arranca el systray (SNI) y se queda hasta Quit.
 // statePath es el archivo JSON que observa el panel QML.
 // onToggle se invoca además al hacer click izquierdo (para la señal D-Bus).
-func Run(st *store.Store, interval time.Duration, statePath string, onToggle func()) {
+// onRGB abre la ventana de control RGB.
+func Run(st *store.Store, interval time.Duration, statePath string, onToggle, onRGB func()) {
 	systray.Run(
-		func() { onReady(st, interval, statePath, onToggle) },
+		func() { onReady(st, interval, statePath, onToggle, onRGB) },
 		func() {},
 	)
 }
 
-func onReady(st *store.Store, interval time.Duration, statePath string, onToggle func()) {
+func onReady(st *store.Store, interval time.Duration, statePath string, onToggle, onRGB func()) {
 	deviceItems := map[string]*systray.MenuItem{}
 
 	for _, d := range st.Devices() {
@@ -28,6 +29,7 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 		deviceItems[d.ID()] = it
 	}
 	systray.AddSeparator()
+	rgbItem := systray.AddMenuItem("Control RGB…", "Abrir la ventana de color")
 	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
 	quitItem := systray.AddMenuItem("Salir", "Cerrar")
 
@@ -57,7 +59,10 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 		var tooltip string
 		for _, d := range st.Devices() {
 			r, ok := byID[d.ID()]
-			if !ok {
+			if !ok || r.Battery == nil {
+				if it, ok := deviceItems[d.ID()]; ok {
+					it.SetTitle(d.Name())
+				}
 				continue
 			}
 			if min < 0 || r.Battery.Percent < min {
@@ -72,12 +77,17 @@ func onReady(st *store.Store, interval time.Duration, statePath string, onToggle
 			}
 		}
 		if tooltip == "" {
-			tooltip = "Sin dispositivos"
+			tooltip = "Sin dispositivos con batería"
 		}
 		systray.SetIcon(batteryIcon(min))
 		systray.SetTooltip(tooltip)
 	}
 
+	rgbItem.Click(func() {
+		if onRGB != nil {
+			onRGB()
+		}
+	})
 	refreshItem.Click(refresh)
 	quitItem.Click(func() { systray.Quit() })
 
