@@ -5,7 +5,7 @@ import Quickshell.Io
 // Device Hub RGB window: the only place that changes LED colours.
 //
 // It is a regular floating window (not a layer-shell panel) so it can stay
-// open next to the hub. The tray ("Colores LED…") opens it through its own IPC
+// open next to the hub. The tray ("LED colors…") opens it through its own IPC
 // target:
 //
 //   qs ipc -p <this file> call devicehub-rgb open
@@ -35,7 +35,7 @@ FloatingWindow {
     readonly property var devices: state.devices || []
     readonly property var rgbMap: state.rgb || ({})
     readonly property var ledDevices: devices.filter(d => ((d.led || {}).controllers || []).length > 0)
-    readonly property var targets: [{ id: "all", name: "Todos" }].concat(
+    readonly property var targets: [{ id: "all", name: "All" }].concat(
         ledDevices.map(d => ({ id: d.id, name: d.name })))
     readonly property var palette: [
         "#ff4d4d", "#ff9f43", "#ffe066", "#51cf66",
@@ -126,7 +126,7 @@ FloatingWindow {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Control RGB"
+                text: "RGB control"
                 color: root.textColor
                 font.pixelSize: 17
                 font.bold: true
@@ -151,7 +151,7 @@ FloatingWindow {
 
         // Target chips
         Text {
-            text: root.target === "all" ? "Aplicar a todos los dispositivos encendidos" : "Aplicar a un dispositivo"
+            text: root.target === "all" ? "Apply to every device that is on" : "Apply to one device"
             color: root.dimColor
             font.pixelSize: 10
         }
@@ -271,7 +271,7 @@ FloatingWindow {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "Aplicar"
+                    text: "Apply"
                     color: "#1a1b26"
                     font.pixelSize: 11
                     font.bold: true
@@ -351,7 +351,7 @@ FloatingWindow {
 
                     Text {
                         visible: !ledCfg.enabled || ledCfg.controller !== "openrgb"
-                        text: ledCfg.enabled ? (ledCfg.controller || "") : "apagado"
+                        text: ledCfg.enabled ? (ledCfg.controller || "") : "off"
                         color: root.dimColor
                         font.pixelSize: 10
                     }

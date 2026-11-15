@@ -35,10 +35,10 @@ func onReady(st *store.Store, interval time.Duration, statePath string, h Handle
 		deviceItems[d.ID()] = it
 	}
 	systray.AddSeparator()
-	colorsItem := systray.AddMenuItem("Colores LED…", "Abrir la paleta del hub")
-	openrgbItem := systray.AddMenuItem("OpenRGB…", "Abrir la GUI de OpenRGB")
-	refreshItem := systray.AddMenuItem("Actualizar", "Leer batería ahora")
-	quitItem := systray.AddMenuItem("Salir", "Cerrar")
+	colorsItem := systray.AddMenuItem("LED colors…", "Open the hub palette")
+	openrgbItem := systray.AddMenuItem("OpenRGB…", "Open the OpenRGB GUI")
+	refreshItem := systray.AddMenuItem("Refresh", "Read battery now")
+	quitItem := systray.AddMenuItem("Quit", "Close")
 
 	// Click izquierdo -> abrir/cerrar el panel (IPC al panel + señal D-Bus).
 	systray.SetOnClick(func(systray.IMenu) {
@@ -75,7 +75,7 @@ func onReady(st *store.Store, interval time.Duration, statePath string, h Handle
 			it := deviceItems[d.ID()]
 			if !r.Connected {
 				if it != nil {
-					it.SetTitle(d.Name() + " — desconectado")
+					it.SetTitle(d.Name() + " — disconnected")
 				}
 				continue
 			}
@@ -97,7 +97,7 @@ func onReady(st *store.Store, interval time.Duration, statePath string, h Handle
 			}
 		}
 		if tooltip == "" {
-			tooltip = "Sin dispositivos con batería"
+			tooltip = "No battery devices"
 		}
 		systray.SetIcon(batteryIcon(min))
 		systray.SetTooltip(tooltip)

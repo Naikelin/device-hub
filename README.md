@@ -100,7 +100,7 @@ sigue con `SET_CUSTOM_MODE` + `UPDATE_LEDS`.
 ### Ventana RGB y profiles
 
 El hub no cambia colores. Su pie tiene el selector de **profile de OpenRGB** y
-el botón **Abrir OpenRGB**, que lanza la GUI oficial (`openrgb --gui`). El
+el botón **Open OpenRGB**, que lanza la GUI oficial (`openrgb --gui`). El
 profile activo se consulta al servidor SDK (paquete `GET_ACTIVE_PROFILE`,
 protocolo 6) y se refresca en cada tick del tray; los profiles se listan del
 directorio `~/.config/OpenRGB/profiles/*.json`, así que la lista está aunque el
@@ -112,7 +112,7 @@ ese obliga a reenviar el modo de cada controlador después de cargar.
 
 La paleta rápida sigue en `panel/rgb.qml` (una ventana flotante con chips de
 destino, paleta de 8 colores, entrada hex y el estado de cada dispositivo), pero
-se abre desde el menú del tray (**Colores LED…**), no desde el hub. En su lista,
+se abre desde el menú del tray (**LED colors…**), no desde el hub. En su lista,
 los dispositivos con controlador `openrgb` tienen un botón **OpenRGB** que abre
 la GUI.
 

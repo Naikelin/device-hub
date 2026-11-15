@@ -5,7 +5,7 @@ import Quickshell.Wayland
 
 // Device Hub panel: one card per peripheral with battery, LED controller and
 // LED on/off, plus the OpenRGB profile selector and a shortcut to the official
-// GUI. The optional quick palette lives in rgb.qml (tray -> "Colores LED…").
+// GUI. The optional quick palette lives in rgb.qml (tray -> "LED colors…").
 //
 // Battery and LED state come from the daemon through a JSON file (Quickshell
 // 0.3.x has no generic D-Bus client). Show/hide is driven by IPC so the tray
@@ -171,7 +171,7 @@ PanelWindow {
                 Text {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Periféricos"
+                    text: "Peripherals"
                     color: root.textColor
                     font.pixelSize: 17
                     font.bold: true
@@ -180,7 +180,7 @@ PanelWindow {
                 Text {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.devices.length + " conectados"
+                    text: root.devices.length + " devices"
                     color: root.dimColor
                     font.pixelSize: 11
                 }
@@ -343,7 +343,7 @@ PanelWindow {
                                 Text {
                                     visible: !cardItem.online
                                     anchors.right: parent.right
-                                    text: "desconectado"
+                                    text: "disconnected"
                                     color: "#f7768e"
                                     font.pixelSize: 10
                                     font.bold: true
@@ -437,7 +437,7 @@ PanelWindow {
                     Text {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Perfil OpenRGB"
+                        text: "OpenRGB profile"
                         color: root.textColor
                         font.pixelSize: 12
                         font.bold: true
@@ -447,7 +447,7 @@ PanelWindow {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root.profiles.length === 0
-                        text: "sin profiles"
+                        text: "no profiles"
                         color: root.dimColor
                         font.pixelSize: 10
                     }
@@ -504,7 +504,7 @@ PanelWindow {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Abrir OpenRGB"
+                        text: "Open OpenRGB"
                         color: "#1a1b26"
                         font.pixelSize: 12
                         font.bold: true
