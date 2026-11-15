@@ -2,11 +2,13 @@ package tray
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"device-hub/internal/store"
 
 	"github.com/energye/systray"
+	"github.com/godbus/dbus/v5"
 )
 
 // Handlers son las acciones que el menú dispara.
@@ -17,13 +19,31 @@ type Handlers struct {
 	Tick    func() // refresca datos externos antes de escribir el estado
 }
 
-// Run arranca el systray (SNI) y se queda hasta Quit.
-// statePath es el archivo JSON que observa el panel QML.
+// Run starts the systray (SNI) and blocks until Quit. It waits for the SNI
+// watcher to answer before starting, because the library registers the icon
+// exactly once and never retries a failed registration.
+// statePath is the JSON file the QML panel watches.
 func Run(st *store.Store, interval time.Duration, statePath string, h Handlers) {
-	systray.Run(
-		func() { onReady(st, interval, statePath, h) },
-		func() {},
-	)
+	ready := func() { onReady(st, interval, statePath, h) }
+
+	conn, err := dbus.SessionBus()
+	if err != nil {
+		log.Printf("tray: no session bus (%v); starting without the icon", err)
+		systray.Run(ready, nil)
+		return
+	}
+
+	if !waitForWatcher(conn, watcherWaitTimeout) {
+		log.Printf("tray: no %s after %s; starting without the icon", watcherName, watcherWaitTimeout)
+	} else {
+		go confirmRegistration(conn, registerCheckWait)
+	}
+
+	// Watched on both paths: a watcher that shows up late still gets the icon,
+	// and one that goes away never leaves the daemon without a tray.
+	go watchWatcher(conn)
+
+	systray.Run(ready, nil)
 }
 
 func onReady(st *store.Store, interval time.Duration, statePath string, h Handlers) {
