@@ -28,6 +28,8 @@ FloatingWindow {
     readonly property color textColor: "#c0caf5"
     readonly property color dimColor: "#7f8aa8"
     readonly property color accentColor: "#7aa2f7"
+    readonly property color accentHover: "#9cb8ff"
+    readonly property color hoverColor: "#2f334d"
 
     property var state: ({ devices: [] })
     readonly property var devices: state.devices || []
@@ -134,12 +136,14 @@ FloatingWindow {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: "×"
-                color: root.dimColor
+                color: closeArea.containsMouse ? root.textColor : root.dimColor
                 font.pixelSize: 20
 
                 MouseArea {
+                    id: closeArea
                     anchors.fill: parent
                     anchors.margins: -6
+                    hoverEnabled: true
                     onClicked: root.visible = false
                 }
             }
@@ -162,13 +166,17 @@ FloatingWindow {
                 delegate: Rectangle {
                     required property var modelData
                     readonly property bool active: root.target === modelData.id
+                    readonly property bool hovered: targetArea.containsMouse
 
                     width: targetLabel.implicitWidth + 18
                     height: 24
                     radius: 12
-                    color: active ? root.accentColor : root.cardColor
+                    color: active ? (hovered ? root.accentHover : root.accentColor)
+                                  : (hovered ? root.hoverColor : root.cardColor)
                     border.width: 1
-                    border.color: active ? root.accentColor : root.borderColor
+                    border.color: active ? root.accentColor
+                               : hovered ? root.dimColor
+                               : root.borderColor
 
                     Text {
                         id: targetLabel
@@ -180,7 +188,9 @@ FloatingWindow {
                     }
 
                     MouseArea {
+                        id: targetArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: root.target = modelData.id
                     }
                 }
@@ -202,11 +212,13 @@ FloatingWindow {
                     height: 30
                     radius: 8
                     color: modelData
-                    border.width: 1
-                    border.color: "#00000055"
+                    border.width: swatchArea.containsMouse ? 2 : 1
+                    border.color: swatchArea.containsMouse ? "#ffffff" : "#00000055"
 
                     MouseArea {
+                        id: swatchArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: root.applyColor(modelData)
                     }
                 }
@@ -255,7 +267,7 @@ FloatingWindow {
                 width: 74
                 height: 30
                 radius: 8
-                color: root.accentColor
+                color: applyArea.containsMouse ? root.accentHover : root.accentColor
 
                 Text {
                     anchors.centerIn: parent
@@ -266,7 +278,9 @@ FloatingWindow {
                 }
 
                 MouseArea {
+                    id: applyArea
                     anchors.fill: parent
+                    hoverEnabled: true
                     onClicked: root.applyColor(hexInput.text)
                 }
             }
@@ -315,9 +329,9 @@ FloatingWindow {
                         width: appLabel.implicitWidth + 14
                         height: 18
                         radius: 9
-                        color: root.cardColor
+                        color: appArea.containsMouse ? root.hoverColor : root.cardColor
                         border.width: 1
-                        border.color: root.borderColor
+                        border.color: appArea.containsMouse ? root.dimColor : root.borderColor
 
                         Text {
                             id: appLabel
@@ -328,7 +342,9 @@ FloatingWindow {
                         }
 
                         MouseArea {
+                            id: appArea
                             anchors.fill: parent
+                            hoverEnabled: true
                             onClicked: root.send({ action: "openrgb" })
                         }
                     }

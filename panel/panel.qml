@@ -37,6 +37,8 @@ PanelWindow {
     readonly property color textColor: "#c0caf5"
     readonly property color dimColor: "#7f8aa8"
     readonly property color accentColor: "#7aa2f7"
+    readonly property color accentHover: "#9cb8ff"
+    readonly property color hoverColor: "#2f334d"
 
     property var state: ({ devices: [] })
     readonly property var devices: state.devices || []
@@ -277,27 +279,37 @@ PanelWindow {
                                         model: cardItem.controllers
 
                                         delegate: Rectangle {
+                                            id: chip
                                             required property string modelData
                                             readonly property bool active: cardItem.activeController === modelData
+                                            readonly property bool hovered: chipArea.containsMouse && chipArea.enabled
 
                                             width: chipLabel.implicitWidth + 14
                                             height: 18
                                             radius: 9
-                                            color: active ? root.accentColor : "transparent"
+                                            color: active ? root.accentColor
+                                                  : hovered ? root.hoverColor
+                                                  : "transparent"
                                             border.width: 1
-                                            border.color: active ? root.accentColor : root.borderColor
+                                            border.color: active ? root.accentColor
+                                                       : hovered ? root.dimColor
+                                                       : root.borderColor
 
                                             Text {
                                                 id: chipLabel
                                                 anchors.centerIn: parent
                                                 text: modelData
-                                                color: active ? "#1a1b26" : root.dimColor
+                                                color: active ? "#1a1b26"
+                                                     : hovered ? root.textColor
+                                                     : root.dimColor
                                                 font.pixelSize: 9
                                                 font.bold: active
                                             }
 
                                             MouseArea {
+                                                id: chipArea
                                                 anchors.fill: parent
+                                                hoverEnabled: true
                                                 enabled: cardItem.online
                                                 onClicked: root.send({
                                                     action: "controller",
@@ -338,14 +350,20 @@ PanelWindow {
                                 }
 
                                 Rectangle {
+                                    id: ledPill
+                                    readonly property bool hovered: ledArea.containsMouse
                                     visible: cardItem.hasLED && cardItem.online
                                     anchors.right: parent.right
                                     width: 52
                                     height: 20
                                     radius: 10
-                                    color: cardItem.ledOn ? root.accentColor : "transparent"
+                                    color: cardItem.ledOn
+                                           ? (hovered ? root.accentHover : root.accentColor)
+                                           : (hovered ? root.hoverColor : "transparent")
                                     border.width: 1
-                                    border.color: cardItem.ledOn ? root.accentColor : root.borderColor
+                                    border.color: cardItem.ledOn
+                                                  ? (hovered ? root.accentHover : root.accentColor)
+                                                  : (hovered ? root.dimColor : root.borderColor)
 
                                     Row {
                                         anchors.centerIn: parent
@@ -371,7 +389,9 @@ PanelWindow {
                                     }
 
                                     MouseArea {
+                                        id: ledArea
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         onClicked: root.send({
                                             action: cardItem.ledOn ? "off" : "on",
                                             device: cardItem.devId
@@ -445,13 +465,17 @@ PanelWindow {
                         delegate: Rectangle {
                             required property string modelData
                             readonly property bool active: root.activeProfile === modelData
+                            readonly property bool hovered: profileArea.containsMouse
 
                             width: profileLabel.implicitWidth + 18
                             height: 22
                             radius: 11
-                            color: active ? root.accentColor : root.cardColor
+                            color: active ? (hovered ? root.accentHover : root.accentColor)
+                                          : (hovered ? root.hoverColor : root.cardColor)
                             border.width: 1
-                            border.color: active ? root.accentColor : root.borderColor
+                            border.color: active ? root.accentColor
+                                       : hovered ? root.dimColor
+                                       : root.borderColor
 
                             Text {
                                 id: profileLabel
@@ -463,7 +487,9 @@ PanelWindow {
                             }
 
                             MouseArea {
+                                id: profileArea
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 onClicked: root.send({ action: "profile", profile: modelData })
                             }
                         }
@@ -474,7 +500,7 @@ PanelWindow {
                     width: parent.width
                     height: 34
                     radius: 8
-                    color: root.accentColor
+                    color: openArea.containsMouse ? root.accentHover : root.accentColor
 
                     Text {
                         anchors.centerIn: parent
@@ -485,7 +511,9 @@ PanelWindow {
                     }
 
                     MouseArea {
+                        id: openArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: root.send({ action: "openrgb" })
                     }
                 }
