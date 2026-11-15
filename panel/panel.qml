@@ -171,7 +171,7 @@ PanelWindow {
                 Text {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Peripherals"
+                    text: "Devices"
                     color: root.textColor
                     font.pixelSize: 17
                     font.bold: true
